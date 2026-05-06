@@ -1,3 +1,3 @@
-import Home from "../../page";
+import { FinanceExportPage } from "../../page";
 
-export default Home;
+export default FinanceExportPage;

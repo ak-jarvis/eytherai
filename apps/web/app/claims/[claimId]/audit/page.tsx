@@ -1,3 +1,3 @@
-import Home from "../../../page";
+import { AuditPage } from "../../../page";
 
-export default Home;
+export default AuditPage;

@@ -1,3 +1,3 @@
-import Home from "../page";
+import { SetupPage } from "../page";
 
-export default Home;
+export default SetupPage;

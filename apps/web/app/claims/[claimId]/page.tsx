@@ -1,3 +1,3 @@
-import Home from "../../page";
+import { ClaimDetailPage } from "../../page";
 
-export default Home;
+export default ClaimDetailPage;

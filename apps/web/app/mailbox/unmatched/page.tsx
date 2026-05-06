@@ -1,3 +1,3 @@
-import Home from "../../page";
+import { ManualMatchPage } from "../../page";
 
-export default Home;
+export default ManualMatchPage;

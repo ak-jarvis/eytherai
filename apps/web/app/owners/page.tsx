@@ -1,3 +1,3 @@
-import Home from "../page";
+import { OwnersPage } from "../page";
 
-export default Home;
+export default OwnersPage;

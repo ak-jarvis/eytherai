@@ -10,6 +10,7 @@ import {
   Injectable,
   Module,
   Param,
+  Patch,
   Post,
   Req,
   Res,
@@ -28,11 +29,13 @@ import {
 } from "@eyther/contracts";
 import { eytherScaffold, nowIso } from "@eyther/config";
 import { createAuthStoreFromEnv } from "./auth-store.js";
+import { createPhase1OperationalStore } from "./phase1-operational-store.js";
 
 const api = eytherScaffold.apiBasePath;
 const isPublicKey = "eyther:isPublic";
 const requiredRolesKey = "eyther:requiredRoles";
 const authStore = createAuthStoreFromEnv();
+const phase1Store = createPhase1OperationalStore();
 
 const Public = () => SetMetadata(isPublicKey, true);
 const Roles = (...roles: string[]) => SetMetadata(requiredRolesKey, roles);
@@ -339,28 +342,40 @@ class PhaseOneController {
 
   @Get("setup/onboarding-state")
   onboarding() {
-    return ok({
-      overall_status: "ready_for_claim_desk",
-      ready_for_claim_desk: true,
-      blocked_reason_codes: activeSendGuard().blocked_reason_codes,
-      cards: [
-        { key: "profile", status: "ready" },
-        { key: "mailbox", status: "test_mode" },
-        { key: "counterparty", status: "evidence_gated" },
-        { key: "test_email", status: "sent" },
-      ],
-    });
+    return ok(phase1Store.getOnboardingState());
+  }
+
+  @Roles("hospital_admin")
+  @Patch("setup/onboarding-state")
+  patchOnboarding(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.updateOnboardingState(body), ["setup:write"]);
   }
 
   @Get("hospital-profile")
   hospitalProfile() {
-    return ok({
-      tenant_id: syntheticIds.tenantId,
-      hospital_id: syntheticIds.hospitalId,
-      display_name: "Lotus Valley Test Hospital",
-      insurance_desk_email_masked: "in***@example.test",
-      redaction_level: "masked_default",
-    });
+    return ok(phase1Store.getHospitalProfile());
+  }
+
+  @Roles("hospital_admin")
+  @Patch("hospital-profile")
+  patchHospitalProfile(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.updateHospitalProfile(body), [
+      "hospital-profile:write",
+    ]);
+  }
+
+  @Roles("hospital_admin")
+  @Post("setup/evidence-artifacts")
+  addEvidenceArtifact(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.addEvidenceArtifact(body), [
+      "setup:evidence-artifact:create",
+    ]);
+  }
+
+  @Roles("hospital_admin")
+  @Post("setup/payer-mix/import")
+  importPayerMix(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.importPayerMix(body), ["setup:payer-mix:import"]);
   }
 
   @Get("counterparties/master")
@@ -393,6 +408,36 @@ class PhaseOneController {
       guard: activeSendGuard(),
       active_for_submission: false,
     });
+  }
+
+  @Roles("hospital_admin")
+  @Post("hospital-counterparties")
+  createHospitalCounterparty(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.createHospitalCounterparty(body), [
+      "counterparty:write",
+    ]);
+  }
+
+  @Roles("hospital_admin")
+  @Patch("hospital-counterparties/:hospital_counterparty_id")
+  updateHospitalCounterparty(
+    @Param("hospital_counterparty_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.updateHospitalCounterparty(id, body), [
+      "counterparty:write",
+    ]);
+  }
+
+  @Roles("hospital_admin")
+  @Post("hospital-counterparties/:hospital_counterparty_id/rule-sets")
+  createRuleSet(
+    @Param("hospital_counterparty_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.createRuleSet(id, body), [
+      "counterparty-rule-set:write",
+    ]);
   }
 
   @Roles("hospital_admin")
@@ -436,9 +481,65 @@ class PhaseOneController {
     });
   }
 
+  @Roles("hospital_admin")
+  @Post("test-emails/:email_event_id/mark-failed")
+  markTestEmailFailed(
+    @Param("email_event_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.markTestEmailFailed(id, body), ["test-email:write"]);
+  }
+
   @Get("claims/:claim_id")
   claimDetail(@Param("claim_id") id: string) {
-    return ok({ ...claim, claim_id: id, active_send_guard: activeSendGuard() });
+    return ok(phase1Store.getClaim(id));
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("claims")
+  createClaim(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.createClaim(body), ["claim:create"]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Patch("claims/:claim_id")
+  patchClaim(
+    @Param("claim_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.updateClaim(id, body), ["claim:update"]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("claims/:claim_id/packets")
+  createPacket(
+    @Param("claim_id") claimId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.createPacket(claimId, body), ["packet:create"]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("claims/:claim_id/packets/:packet_id/documents")
+  attachDocument(
+    @Param("claim_id") claimId: string,
+    @Param("packet_id") packetId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.attachDocument(claimId, packetId, body), [
+      "document:attach",
+    ]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("documents/:document_id/replace")
+  replaceDocument(
+    @Param("document_id") documentId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.replaceDocument(documentId, body), [
+      "document:replace",
+    ]);
   }
 
   @Get("claims/:claim_id/packets/:packet_id/send-eligibility")
@@ -458,43 +559,54 @@ class PhaseOneController {
     activeSendBlocked();
   }
 
+  @Get("claims/:claim_id/packets/:packet_id/download-manual-route")
+  downloadManualRoute(
+    @Param("claim_id") claimId: string,
+    @Param("packet_id") packetId: string,
+  ) {
+    return ok(phase1Store.downloadManualRoute(claimId, packetId));
+  }
+
   @Get("worklist")
   worklist() {
-    return ok({
-      items: [
-        claim,
-        {
-          ...claim,
-          claim_id: "CLM-TEST-0002",
-          patient_display_name: "Test Patient Beta",
-          current_status: "Doctor note pending",
-          claim_value_inr: 84000,
-        },
-        {
-          ...claim,
-          claim_id: "CLM-TEST-0003",
-          patient_display_name: "Test Patient Gamma",
-          current_status: "Short payment review",
-          claim_value_inr: 218000,
-        },
-      ],
-    });
+    return ok(phase1Store.getWorklist());
   }
 
   @Get("email-events/manual-match-queue")
   manualMatchQueue() {
-    return ok({ items: [emailEvent] });
+    return ok(phase1Store.getManualMatchQueue());
+  }
+
+  @Get("email-events/:email_event_id/match-candidates")
+  matchCandidates(@Param("email_event_id") id: string) {
+    return ok(phase1Store.getMatchCandidates(id));
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/manual-match")
-  manualMatch(@Param("email_event_id") id: string) {
-    return ok({
-      email_event_id: id,
-      claim_id: syntheticIds.claimId,
-      match_status: "manual_matched",
-      audit_action: "match_email",
-    });
+  manualMatch(
+    @Param("email_event_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.manualMatchEmail(id, body));
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("email-events/:email_event_id/ignore")
+  ignoreEmail(
+    @Param("email_event_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.ignoreEmailEvent(id, body));
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("email-events/:email_event_id/quarantine-release")
+  releaseQuarantine(
+    @Param("email_event_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.quarantineRelease(id, body));
   }
 
   @Roles("claim_officer", "hospital_admin")
@@ -508,43 +620,69 @@ class PhaseOneController {
     });
   }
 
+  @Roles("claim_officer", "hospital_admin")
+  @Post("claims/:claim_id/lifecycle-events")
+  addLifecycleEvent(
+    @Param("claim_id") claimId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return ok(phase1Store.addLifecycleEvent(claimId, body), [
+      "claim-lifecycle:write",
+    ]);
+  }
+
   @Get("owner-summary")
   ownerSummary() {
-    return ok({
-      owner: claim.owner,
-      open_claims: 14,
-      outstanding_value_inr: 1840000,
-      redaction_level: "aggregate_masked",
-    });
+    return ok(phase1Store.getOwnerSummary());
   }
 
   @Get("finance-summary")
   financeSummary() {
-    return ok({
-      settlement_total_inr: 690000,
-      short_payment_review_inr: 218000,
-      payment_advice_status: "synthetic_redacted",
-    });
+    return ok(phase1Store.getFinanceSummary());
   }
 
   @Post("exports")
-  createExport() {
-    return ok({
-      export_id: syntheticIds.exportId,
-      status: "ready",
-      filename: "synthetic-finance-export.csv",
-      expires_at: nowIso(),
-    });
+  createExport(@Body() body: Record<string, unknown>) {
+    return ok(phase1Store.createExport(body), ["export:create"]);
   }
 
   @Get("exports/:export_id/download")
   downloadExport(@Param("export_id") id: string) {
-    return ok({
-      export_id: id,
-      filename: "synthetic-finance-export.csv",
-      content_type: "text/csv",
-      redaction_status: "redacted",
-    });
+    return ok(phase1Store.downloadExport(id), ["export:download"]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("email-events/:email_event_id/reveal-raw")
+  revealRawEmail(
+    @Param("email_event_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const result = phase1Store.revealStub("email_event", id, body);
+    if (result.status === "validation_error") {
+      apiError(
+        "REVEAL_REASON_REQUIRED",
+        "Sensitive reveal requires an audited reason.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return ok(result, ["sensitive-reveal:request"]);
+  }
+
+  @Roles("claim_officer", "hospital_admin")
+  @Post("documents/:document_id/reveal")
+  revealDocument(
+    @Param("document_id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const result = phase1Store.revealStub("document", id, body);
+    if (result.status === "validation_error") {
+      apiError(
+        "REVEAL_REASON_REQUIRED",
+        "Sensitive reveal requires an audited reason.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return ok(result, ["sensitive-reveal:request"]);
   }
 }
 
