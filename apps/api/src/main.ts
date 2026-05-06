@@ -11,10 +11,12 @@ import {
   Module,
   Param,
   Post,
+  Req,
   Res,
   SetMetadata
 } from "@nestjs/common";
 import { NestFactory, Reflector } from "@nestjs/core";
+import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
   ACTIVE_SEND_BLOCKED,
@@ -30,7 +32,6 @@ import { eytherScaffold, nowIso } from "@eyther/config";
 const api = eytherScaffold.apiBasePath;
 const isPublicKey = "eyther:isPublic";
 const requiredRolesKey = "eyther:requiredRoles";
-const authSessionToken = "SESSION-TEST-0001";
 const loginChallengeId = "LOGIN-TEST-0001";
 const syntheticOtp = "000000";
 const syntheticEmail = "insurance.desk@example.test";
@@ -49,6 +50,17 @@ const authUser = {
 };
 
 let inviteStatus: "pending" | "accepted" = "pending";
+const authSessions = new Map<
+  string,
+  {
+    session_id: string;
+    user: typeof authUser;
+    created_at: string;
+    expires_at: string;
+    revoked_at: string | null;
+    session_fresh_until: string;
+  }
+>();
 
 const claim = {
   claim_id: syntheticIds.claimId,
@@ -125,28 +137,56 @@ function parseCookieHeader(cookieHeader: string | undefined) {
   );
 }
 
-function authSessionFromCookie(cookieHeader: string | undefined) {
-  const cookies = parseCookieHeader(cookieHeader);
-  if (cookies[AUTH_SESSION_COOKIE] !== authSessionToken) return null;
-
-  return {
-    session_id: authSessionToken,
-    user: authUser,
-    session_fresh_until: new Date(Date.now() + 30 * 60 * 1000).toISOString()
-  };
+function hashSessionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-function setAuthCookie(response: { setHeader(name: string, value: string): void }) {
-  const attributes = [`${AUTH_SESSION_COOKIE}=${authSessionToken}`, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=28800"];
+function authSessionFromCookie(cookieHeader: string | undefined) {
+  const cookies = parseCookieHeader(cookieHeader);
+  const token = cookies[AUTH_SESSION_COOKIE];
+  if (!token) return null;
+
+  const session = authSessions.get(hashSessionToken(token));
+  if (!session || session.revoked_at || Date.parse(session.expires_at) <= Date.now()) return null;
+
+  return session;
+}
+
+function setCookie(response: { setHeader(name: string, value: string): void }, value: string, maxAgeSeconds: number) {
+  const attributes = [`${AUTH_SESSION_COOKIE}=${value}`, "HttpOnly", "SameSite=Lax", "Path=/", `Max-Age=${maxAgeSeconds}`];
   if (process.env.NODE_ENV === "production") attributes.push("Secure");
   response.setHeader("Set-Cookie", attributes.join("; "));
 }
 
-function authPayload() {
+function createAuthSession(response: { setHeader(name: string, value: string): void }) {
+  const token = randomUUID();
+  const sessionFreshUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+
+  authSessions.set(hashSessionToken(token), {
+    session_id: randomUUID(),
+    user: authUser,
+    created_at: nowIso(),
+    expires_at: expiresAt,
+    revoked_at: null,
+    session_fresh_until: sessionFreshUntil
+  });
+  setCookie(response, token, 8 * 60 * 60);
+
   return {
     user: authUser,
-    session_fresh_until: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    session_fresh_until: sessionFreshUntil
   };
+}
+
+function revokeAuthSession(cookieHeader: string | undefined) {
+  const token = parseCookieHeader(cookieHeader)[AUTH_SESSION_COOKIE];
+  if (!token) return false;
+  const session = authSessions.get(hashSessionToken(token));
+  if (!session || session.revoked_at) return false;
+
+  session.revoked_at = nowIso();
+  return true;
 }
 
 @Injectable()
@@ -225,8 +265,14 @@ class PhaseOneController {
       apiError("UNAUTHENTICATED", "Login code could not be verified.", HttpStatus.UNAUTHORIZED);
     }
 
-    setAuthCookie(response);
-    return ok(authPayload(), ["auth:login", "role:claim_officer", "branch:all"]);
+    return ok(createAuthSession(response), ["auth:login", "role:claim_officer", "branch:all"]);
+  }
+
+  @Post("auth/logout")
+  logout(@Req() request: { headers: { cookie?: string } }, @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }) {
+    revokeAuthSession(request.headers.cookie);
+    setCookie(response, "", 0);
+    return ok({ session_status: "revoked", audit_action: "logout" }, ["auth:logout"]);
   }
 
   @Public()
@@ -262,12 +308,11 @@ class PhaseOneController {
     }
 
     inviteStatus = "accepted";
-    setAuthCookie(response);
     return ok(
       {
         invite_id: inviteId,
         invite_status: inviteStatus,
-        ...authPayload(),
+        ...createAuthSession(response),
         audit_actions: ["user_invite_accept", "login"]
       },
       ["auth:invite_accept", "role:claim_officer", "branch:all"]

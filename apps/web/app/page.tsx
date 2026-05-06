@@ -78,6 +78,15 @@ export default function Home() {
     }
   }
 
+  async function logout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+    } finally {
+      setAuthUser(null);
+      setAuthStatus("pending");
+    }
+  }
+
   function downloadFinanceExport() {
     const csv = [
       "claim_id,owner,insurer_or_tpa,claim_value_inr,status,redaction_status",
@@ -106,6 +115,7 @@ export default function Home() {
           <Button data-testid="accept-invite" onClick={acceptInvite} disabled={authStatus === "starting"} primary>
             {loggedIn ? "Signed in" : authStatus === "starting" ? "Signing in" : "Accept invite"}
           </Button>
+          {loggedIn ? <Button data-testid="logout" onClick={logout}>Sign out</Button> : null}
         </div>
       </header>
       <nav className="route-tabs" aria-label="Phase 1 sections">

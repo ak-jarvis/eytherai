@@ -25,6 +25,19 @@ test.describe("Eyther Phase 1 synthetic local journey", () => {
     expect(sessionCookie?.httpOnly, "session cookie must be HTTP-only").toBe(true);
   });
 
+  test("logout revokes the API session and clears the browser cookie", async ({ page }) => {
+    await gotoPhase1(page, "/");
+    await clickBySemanticTarget(page, { testIds: ["accept-invite"], names: [/accept invite/i] });
+    await expectAnyVisible(page, [/signed in/i, /claim_officer/i]);
+
+    await clickBySemanticTarget(page, { testIds: ["logout"], names: [/sign out/i, /logout/i] });
+    await expect(page.getByText(/synthetic invite pending/i).first()).toBeVisible();
+    await expect(page.getByText(/api-backed invite/i).first()).toBeVisible();
+
+    const cookies = await page.context().cookies(new URL(apiURL).origin);
+    expect(cookies.find((cookie) => cookie.name === "eyther_session"), "logout should remove the API session cookie").toBeUndefined();
+  });
+
   test("setup and readiness surfaces are healthy and synthetic-only", async ({ page, request }) => {
     const health = await request.get(`${apiURL}/health`);
     expect([200, 204], "API readiness endpoint should be available").toContain(health.status());

@@ -39,6 +39,7 @@ export type SendEligibility = z.infer<typeof sendEligibilitySchema>;
 export const canonicalRoutes = [
   "POST /auth/login/start",
   "POST /auth/login/verify",
+  "POST /auth/logout",
   "GET /invites/:invite_id",
   "POST /invites/:invite_id/accept",
   "POST /admin/tenants",

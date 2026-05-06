@@ -55,6 +55,7 @@ describe("Phase 1 local API contract", () => {
 
     expect(response.body.data.canonical_routes).toContain("POST /setup/payer-mix/import");
     expect(response.body.data.canonical_routes).toContain("POST /claims/:claim_id/packets/:packet_id/send");
+    expect(response.body.data.canonical_routes).toContain("POST /auth/logout");
     expect(response.body.data.canonical_routes).not.toContain(deprecatedRoute);
   });
 
@@ -84,6 +85,17 @@ describe("Phase 1 local API contract", () => {
 
     const cookie = await loginCookie();
     await request(app.getHttpServer()).get("/api/v1/worklist").set("Cookie", cookie).expect(200);
+  });
+
+  it("revokes the server-side session on logout", async () => {
+    const cookie = await loginCookie();
+
+    const logout = await request(app.getHttpServer()).post("/api/v1/auth/logout").set("Cookie", cookie).expect(201);
+
+    expect(logout.body.data).toMatchObject({ session_status: "revoked", audit_action: "logout" });
+    expect(headerCookies(logout.headers["set-cookie"]).join("; ")).toContain(`${AUTH_SESSION_COOKIE}=`);
+    expect(headerCookies(logout.headers["set-cookie"]).join("; ")).toContain("Max-Age=0");
+    await request(app.getHttpServer()).get("/api/v1/worklist").set("Cookie", cookie).expect(401);
   });
 
   it("hard-blocks Active Send until evidence guard passes", async () => {
