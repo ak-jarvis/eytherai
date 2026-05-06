@@ -21,7 +21,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
+      - run: NEXT_PUBLIC_API_BASE_URL=http://localhost:3011/api/v1 pnpm build
       - run: pnpm fixtures:scan
       - run: pnpm pii:scan
       - run: pnpm exec playwright install --with-deps chromium

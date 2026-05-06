@@ -245,7 +245,11 @@ class AppModule {}
 
 export async function createApp() {
   const app = await NestFactory.create(AppModule, { logger: ["error", "warn", "log"] });
-  app.enableCors({ origin: ["http://localhost:3000", "http://127.0.0.1:3000"], credentials: true });
+  const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3020,http://127.0.0.1:3020")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({ origin: corsOrigins, credentials: true });
   return app;
 }
 
