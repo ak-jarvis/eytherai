@@ -28,7 +28,8 @@ test.describe("Eyther Phase 1 synthetic local journey", () => {
   test("logout revokes the API session and clears the browser cookie", async ({ page }) => {
     await gotoPhase1(page, "/");
     await clickBySemanticTarget(page, { testIds: ["accept-invite"], names: [/accept invite/i] });
-    await expectAnyVisible(page, [/signed in/i, /claim_officer/i]);
+    await expect(page.getByText(/signed in/i).first()).toBeVisible();
+    await expect(page.getByText(/claim_officer/i).first()).toBeVisible();
 
     await clickBySemanticTarget(page, { testIds: ["logout"], names: [/sign out/i, /logout/i] });
     await expect(page.getByText(/synthetic invite pending/i).first()).toBeVisible();

@@ -7,6 +7,260 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// GOV-01 scaffold only. First data-model PR must add tenant, hospital, user,
-// counterparty, claim, mailbox, audit, and redaction models with synthetic
-// migration tests before any real hospital records are allowed.
+enum UserStatus {
+  invited
+  active
+  deactivated
+  revoked
+}
+
+enum AssignmentStatus {
+  active
+  inactive
+  expired
+  revoked
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  expired
+  revoked
+}
+
+enum AuditActorType {
+  hospital_user
+  eyther_support_admin
+  system
+  integration
+}
+
+enum AuditAction {
+  login
+  failed_login
+  logout
+  forbidden_access
+  user_invite_create
+  user_invite_accept
+  user_invite_revoke
+  user_deactivate
+  user_reactivate
+  role_change
+  branch_scope_change
+}
+
+model Tenant {
+  tenantId     String   @id @default(uuid()) @db.Uuid
+  tenantSlug   String   @unique
+  displayName  String
+  tenantStatus String   @default("active")
+  dataRegion   String   @default("railway-cloud-pilot")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hospitals       Hospital[]
+  users           HospitalUser[]
+  roleAssignments HospitalUserRoleAssignment[]
+  branchScopes    HospitalUserBranchScope[]
+  invites         HospitalUserInvite[]
+  challenges      AuthLoginChallenge[]
+  sessions        AuthSession[]
+  auditLogs       AuditLog[]
+}
+
+model Hospital {
+  hospitalId     String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  legalName      String
+  displayName    String
+  branchUnitName String?
+  city           String
+  state          String
+  activeStatus   String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant          Tenant                       @relation(fields: [tenantId], references: [tenantId])
+  users           HospitalUser[]
+  roleAssignments HospitalUserRoleAssignment[]
+  branchScopes    HospitalUserBranchScope[]
+  invites         HospitalUserInvite[]
+  challenges      AuthLoginChallenge[]
+  sessions        AuthSession[]
+  auditLogs       AuditLog[]
+
+  @@index([tenantId])
+}
+
+model HospitalUser {
+  userId               String     @id @default(uuid()) @db.Uuid
+  tenantId             String     @db.Uuid
+  hospitalId           String     @db.Uuid
+  name                 String
+  email                String
+  phoneMasked          String?
+  loginIdentifierEmail String
+  userStatus           UserStatus @default(invited)
+  deactivatedAt        DateTime?
+  deactivatedByUserId  String?    @db.Uuid
+  deactivationReason   String?
+  lastLoginAt          DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  tenant          Tenant                       @relation(fields: [tenantId], references: [tenantId])
+  hospital        Hospital                     @relation(fields: [hospitalId], references: [hospitalId])
+  roleAssignments HospitalUserRoleAssignment[]
+  branchScopes    HospitalUserBranchScope[]
+  challenges      AuthLoginChallenge[]
+  sessions        AuthSession[]
+
+  @@unique([tenantId, loginIdentifierEmail])
+  @@index([tenantId, hospitalId])
+  @@index([email])
+}
+
+model RoleLookup {
+  roleKey      String   @id
+  displayLabel String
+  isInternal   Boolean  @default(false)
+  activeStatus String   @default("active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignments HospitalUserRoleAssignment[]
+}
+
+model HospitalUserRoleAssignment {
+  roleAssignmentId String           @id @default(uuid()) @db.Uuid
+  tenantId         String           @db.Uuid
+  hospitalId       String           @db.Uuid
+  userId           String           @db.Uuid
+  roleKey          String
+  assignmentStatus AssignmentStatus @default(active)
+  effectiveFrom    DateTime         @default(now())
+  effectiveTo      DateTime?
+  assignedByUserId String?          @db.Uuid
+  reasonSanitized  String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+  role     RoleLookup   @relation(fields: [roleKey], references: [roleKey])
+
+  @@index([tenantId, hospitalId, userId])
+  @@index([roleKey])
+}
+
+model HospitalUserBranchScope {
+  branchScopeId   String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @db.Uuid
+  hospitalId      String           @db.Uuid
+  userId          String           @db.Uuid
+  branchId        String?          @db.Uuid
+  allBranches     Boolean          @default(false)
+  scopeStatus     AssignmentStatus @default(active)
+  effectiveFrom   DateTime         @default(now())
+  effectiveTo     DateTime?
+  assignedByUserId String?         @db.Uuid
+  reasonSanitized String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+
+  @@index([tenantId, hospitalId, userId])
+}
+
+model HospitalUserInvite {
+  inviteId           String       @id @default(uuid()) @db.Uuid
+  tenantId           String       @db.Uuid
+  hospitalId         String       @db.Uuid
+  email              String
+  name               String
+  phoneMasked        String?
+  roleKeysRequested  String[]
+  branchScopePayload Json
+  inviteStatus       InviteStatus @default(pending)
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  invitedByUserId    String?      @db.Uuid
+  revokedByUserId    String?      @db.Uuid
+  revokedAt          DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, email])
+  @@index([inviteStatus])
+}
+
+model AuthLoginChallenge {
+  loginChallengeId String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  hospitalId       String    @db.Uuid
+  userId           String?   @db.Uuid
+  emailNormalized  String
+  otpHash          String
+  delivery         String    @default("synthetic_email")
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  failedAttempts   Int       @default(0)
+  createdAt        DateTime  @default(now())
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital      @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser? @relation(fields: [userId], references: [userId])
+
+  @@index([emailNormalized, expiresAt])
+  @@index([tenantId, hospitalId])
+}
+
+model AuthSession {
+  sessionId          String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @db.Uuid
+  hospitalId         String    @db.Uuid
+  userId             String    @db.Uuid
+  sessionTokenHash   String    @unique
+  ipContextHash      String?
+  deviceContext      String?
+  createdAt          DateTime  @default(now())
+  lastSeenAt         DateTime?
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  sessionFreshUntil  DateTime?
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+
+  @@index([tenantId, hospitalId, userId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  auditLogId      String         @id @default(uuid()) @db.Uuid
+  tenantId        String?        @db.Uuid
+  hospitalId      String?        @db.Uuid
+  actorType       AuditActorType @default(hospital_user)
+  actorUserId     String?        @db.Uuid
+  action          AuditAction
+  entityType      String
+  entityId        String?
+  metadataRedacted Json          @default("{}")
+  reasonSanitized String?
+  correlationId   String?
+  createdAt       DateTime       @default(now())
+
+  tenant   Tenant?   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital? @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, createdAt])
+  @@index([action, createdAt])
+}
