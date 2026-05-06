@@ -42,6 +42,8 @@ pnpm verify:phase1
 
 `pnpm verify:phase1` runs lint, typecheck, tests, build, fixture scan, PII/secret scan, API tests, Prisma validate, deployment config JSON parse, built API/web boot, Active Send backend guard, and Playwright.
 
+Use `.env.example` only as a non-secret key reference. Real Railway/Vercel values must be stored in platform env/secret tooling, not committed.
+
 For Prisma/Postgres persistence evidence, use a throwaway synthetic Postgres database only:
 
 ```bash
