@@ -14,9 +14,10 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "fixtures:scan": "pnpm pii:scan",
     "pii:scan": "node scripts/pii-scan.mjs",
     "db:validate": "pnpm --filter @eyther/db db:validate",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm db:validate && pnpm build && pnpm pii:scan"
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm db:validate && pnpm build && pnpm pii:scan && pnpm fixtures:scan"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
