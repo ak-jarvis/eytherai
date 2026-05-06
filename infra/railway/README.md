@@ -24,9 +24,10 @@ Values must be configured in Railway, not committed:
 - `PORT` supplied by Railway
 - `DATABASE_URL=[REDACTED]`
 - `EYTHER_AUTH_STORE=prisma`
+- `EYTHER_PHASE1_STORE=prisma`
 - `CORS_ORIGINS=[VERCEL_PREVIEW_OR_PRODUCTION_ORIGIN]`
 - Future mailbox/OAuth/secret references only after reviewer approval
 
 Do not add real patient data, raw email, raw MIME, raw claim documents, mailbox screenshots, OAuth tokens, app passwords, or credentials to Railway variables, logs, fixtures, PRs, or vault evidence.
 
-Before enabling `EYTHER_AUTH_STORE=prisma`, apply the checked-in Prisma migration to Railway Postgres and seed only synthetic/no-patient-data hospital users, roles, branch scope, and invites.
+Before enabling `EYTHER_AUTH_STORE=prisma` and `EYTHER_PHASE1_STORE=prisma`, apply the checked-in Prisma migrations to Railway Postgres and seed only synthetic/no-patient-data hospital users, roles, branch scope, invites, and Phase 1 operational rows.
