@@ -1,0 +1,12 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// GOV-01 scaffold only. First data-model PR must add tenant, hospital, user,
+// counterparty, claim, mailbox, audit, and redaction models with synthetic
+// migration tests before any real hospital records are allowed.
