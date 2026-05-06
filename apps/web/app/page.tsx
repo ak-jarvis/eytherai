@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api/v1";
+const INVITE_ID = "INVITE-TEST-0001";
+const SYNTHETIC_OTP = "000000";
 const claim = {
   id: "CLM-TEST-0001",
   patient: "Test Patient Alpha",
@@ -27,9 +29,17 @@ const financeRows = [
   ["Outstanding ageing 8+ days", "2", "INR 6.1L", "Billing and finance recovery review"]
 ];
 
+type AuthUser = {
+  user_id: string;
+  name: string;
+  roles: string[];
+  branch_scope: { all_branches: boolean; branch_ids: string[] };
+};
+
 export default function Home() {
   const [apiLive, setApiLive] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [authStatus, setAuthStatus] = useState<"pending" | "starting" | "signed_in" | "error">("pending");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [evidenceAttached, setEvidenceAttached] = useState(false);
   const [noPatientConfirmed, setNoPatientConfirmed] = useState(false);
@@ -44,6 +54,29 @@ export default function Home() {
 
   const rows = useMemo(() => worklistRows.filter((row) => stage === "All" || row[3] === stage), [stage]);
   const activeSendEvidenceCaptured = acknowledged && evidenceAttached && noPatientConfirmed;
+  const loggedIn = authStatus === "signed_in";
+
+  async function acceptInvite() {
+    setAuthStatus("starting");
+    try {
+      const invite = await fetch(`${API_BASE}/invites/${INVITE_ID}`, { credentials: "include" });
+      if (!invite.ok) throw new Error("Invite read failed");
+
+      const accepted = await fetch(`${API_BASE}/invites/${INVITE_ID}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: "Insurance Desk Test Owner", phone: null, otp: SYNTHETIC_OTP })
+      });
+      const verifyPayload = await accepted.json();
+      if (!accepted.ok) throw new Error(verifyPayload?.message ?? "Invite acceptance failed");
+
+      setAuthUser(verifyPayload.data.user);
+      setAuthStatus("signed_in");
+    } catch {
+      setAuthStatus("error");
+    }
+  }
 
   function downloadFinanceExport() {
     const csv = [
@@ -70,14 +103,20 @@ export default function Home() {
         </div>
         <div className="topbar-actions">
           <Badge tone={apiLive ? "good" : "warn"}>{apiLive ? "Live API" : "Demo fallback"}</Badge>
-          <Button onClick={() => setLoggedIn((value) => !value)} primary>{loggedIn ? "Signed in" : "Accept invite"}</Button>
+          <Button data-testid="accept-invite" onClick={acceptInvite} disabled={authStatus === "starting"} primary>
+            {loggedIn ? "Signed in" : authStatus === "starting" ? "Signing in" : "Accept invite"}
+          </Button>
         </div>
       </header>
       <nav className="route-tabs" aria-label="Phase 1 sections">
         {["Setup", "Worklist", "Claim", "Manual match", "Owners", "Finance export", "Audit"].map((item) => <span key={item}>{item}</span>)}
       </nav>
       <section className="login-strip">
-        <div><span>Invite / login</span><strong>{loggedIn ? "Insurance desk test session" : "Synthetic invite pending"}</strong><small>Local prototype session only</small></div>
+        <div>
+          <span>Invite / login</span>
+          <strong>{loggedIn ? `${authUser?.name ?? "Insurance desk"} signed in` : authStatus === "error" ? "Login needs API" : "Synthetic invite pending"}</strong>
+          <small>{loggedIn ? `Roles: ${authUser?.roles.join(", ")} | Branch scope: all branches` : "API-backed invite and session cookie flow"}</small>
+        </div>
         <div><span>Safety</span><strong>No patient data</strong><small>Synthetic only; no real claim documents, email bodies, or identifiers</small></div>
         <div><span>Active Send</span><strong>Blocked</strong><small>{activeSendEvidenceCaptured ? "Synthetic evidence captured; reviewer/live guard still blocks Send" : "Missing evidence or acknowledgement required"}</small></div>
       </section>

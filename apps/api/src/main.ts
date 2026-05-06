@@ -1,9 +1,24 @@
 import "reflect-metadata";
-import { Controller, Get, HttpException, HttpStatus, Module, Param, Post } from "@nestjs/common";
-import { NestFactory } from "@nestjs/core";
+import {
+  Body,
+  CanActivate,
+  Controller,
+  ExecutionContext,
+  Get,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Module,
+  Param,
+  Post,
+  Res,
+  SetMetadata
+} from "@nestjs/common";
+import { NestFactory, Reflector } from "@nestjs/core";
 import { pathToFileURL } from "node:url";
 import {
   ACTIVE_SEND_BLOCKED,
+  AUTH_SESSION_COOKIE,
   canonicalRoutes,
   type HealthResponse,
   healthResponseSchema,
@@ -13,6 +28,27 @@ import {
 import { eytherScaffold, nowIso } from "@eyther/config";
 
 const api = eytherScaffold.apiBasePath;
+const isPublicKey = "eyther:isPublic";
+const requiredRolesKey = "eyther:requiredRoles";
+const authSessionToken = "SESSION-TEST-0001";
+const loginChallengeId = "LOGIN-TEST-0001";
+const syntheticOtp = "000000";
+const syntheticEmail = "insurance.desk@example.test";
+
+const Public = () => SetMetadata(isPublicKey, true);
+const Roles = (...roles: string[]) => SetMetadata(requiredRolesKey, roles);
+
+const authUser = {
+  user_id: syntheticIds.userId,
+  tenant_id: syntheticIds.tenantId,
+  hospital_id: syntheticIds.hospitalId,
+  name: "Insurance Desk Test Owner",
+  email: syntheticEmail,
+  roles: ["hospital_admin", "claim_officer", "billing_finance"],
+  branch_scope: { all_branches: true, branch_ids: [] as string[] }
+};
+
+let inviteStatus: "pending" | "accepted" = "pending";
 
 const claim = {
   claim_id: syntheticIds.claimId,
@@ -63,6 +99,80 @@ function activeSendGuard() {
   });
 }
 
+function apiError(code: string, message: string, status: HttpStatus, blockedReasonCodes: string[] = []): never {
+  throw new HttpException(
+    {
+      code,
+      message,
+      field: null,
+      blocked_reason_codes: blockedReasonCodes,
+      correlation_id: correlationId()
+    },
+    status
+  );
+}
+
+function parseCookieHeader(cookieHeader: string | undefined) {
+  return Object.fromEntries(
+    (cookieHeader ?? "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [name, ...valueParts] = part.split("=");
+        return [name, valueParts.join("=")];
+      })
+  );
+}
+
+function authSessionFromCookie(cookieHeader: string | undefined) {
+  const cookies = parseCookieHeader(cookieHeader);
+  if (cookies[AUTH_SESSION_COOKIE] !== authSessionToken) return null;
+
+  return {
+    session_id: authSessionToken,
+    user: authUser,
+    session_fresh_until: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  };
+}
+
+function setAuthCookie(response: { setHeader(name: string, value: string): void }) {
+  const attributes = [`${AUTH_SESSION_COOKIE}=${authSessionToken}`, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=28800"];
+  if (process.env.NODE_ENV === "production") attributes.push("Secure");
+  response.setHeader("Set-Cookie", attributes.join("; "));
+}
+
+function authPayload() {
+  return {
+    user: authUser,
+    session_fresh_until: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  };
+}
+
+@Injectable()
+class SessionGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(isPublicKey, [context.getHandler(), context.getClass()]);
+    if (isPublic) return true;
+
+    const request = context.switchToHttp().getRequest<{ headers: { cookie?: string }; auth?: typeof authUser }>();
+    const session = authSessionFromCookie(request.headers.cookie);
+    if (!session) {
+      apiError("UNAUTHENTICATED", "Login session is required.", HttpStatus.UNAUTHORIZED);
+    }
+
+    request.auth = session.user;
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(requiredRolesKey, [context.getHandler(), context.getClass()]) ?? [];
+    if (requiredRoles.length && !requiredRoles.some((role) => session.user.roles.includes(role))) {
+      apiError("FORBIDDEN", "Your role cannot perform this action.", HttpStatus.FORBIDDEN);
+    }
+
+    return true;
+  }
+}
+
 function activeSendBlocked() {
   throw new HttpException(
     {
@@ -78,11 +188,13 @@ function activeSendBlocked() {
 
 @Controller(api)
 class HealthController {
+  @Public()
   @Get("health")
   health(): HealthResponse {
     return healthResponseSchema.parse({ ok: true, service: "api", phase: "phase-1-local" });
   }
 
+  @Public()
   @Get("contract/routes")
   routes() {
     return ok({ base_path: api, canonical_routes: canonicalRoutes });
@@ -91,24 +203,75 @@ class HealthController {
 
 @Controller(api)
 class PhaseOneController {
+  @Public()
   @Post("auth/login/start")
-  loginStart() {
-    return ok({ login_challenge_id: "LOGIN-TEST-0001", delivery: "synthetic_email" });
+  loginStart(@Body() body: { email?: string }) {
+    if (body.email !== syntheticEmail) {
+      apiError("UNAUTHENTICATED", "Only named invited users can start login.", HttpStatus.UNAUTHORIZED);
+    }
+
+    return ok({
+      login_challenge_id: loginChallengeId,
+      delivery: "synthetic_email",
+      masked_destination: "in***@example.test",
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    });
   }
 
+  @Public()
   @Post("auth/login/verify")
-  loginVerify() {
-    return ok({ user_id: syntheticIds.userId, roles: ["hospital_admin", "claim_officer", "billing_finance"] });
+  loginVerify(@Body() body: { login_challenge_id?: string; otp?: string }, @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }) {
+    if (body.login_challenge_id !== loginChallengeId || body.otp !== syntheticOtp) {
+      apiError("UNAUTHENTICATED", "Login code could not be verified.", HttpStatus.UNAUTHORIZED);
+    }
+
+    setAuthCookie(response);
+    return ok(authPayload(), ["auth:login", "role:claim_officer", "branch:all"]);
   }
 
+  @Public()
   @Get("invites/:invite_id")
   invite(@Param("invite_id") inviteId: string) {
-    return ok({ invite_id: inviteId, status: "pending", hospital: "Lotus Valley Test Hospital" });
+    if (inviteId !== syntheticIds.inviteId) {
+      apiError("NOT_FOUND", "Invite was not found.", HttpStatus.NOT_FOUND);
+    }
+
+    return ok({
+      invite_id: inviteId,
+      invite_status: inviteStatus,
+      hospital: { display_name: "Lotus Valley Test Hospital", city: "Indore", state: "Madhya Pradesh" },
+      email_masked: "in***@example.test",
+      requested_roles: authUser.roles,
+      branch_scope: authUser.branch_scope,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    });
   }
 
+  @Public()
   @Post("invites/:invite_id/accept")
-  acceptInvite(@Param("invite_id") inviteId: string) {
-    return ok({ invite_id: inviteId, invite_status: "accepted" });
+  acceptInvite(
+    @Param("invite_id") inviteId: string,
+    @Body() body: { name?: string; phone?: string | null; otp?: string },
+    @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }
+  ) {
+    if (inviteId !== syntheticIds.inviteId) {
+      apiError("NOT_FOUND", "Invite was not found.", HttpStatus.NOT_FOUND);
+    }
+    if (!body.name?.trim() || body.otp !== syntheticOtp) {
+      apiError("VALIDATION_ERROR", "Invite acceptance requires name and the synthetic OTP.", HttpStatus.BAD_REQUEST);
+    }
+
+    inviteStatus = "accepted";
+    setAuthCookie(response);
+    return ok(
+      {
+        invite_id: inviteId,
+        invite_status: inviteStatus,
+        ...authPayload(),
+        audit_actions: ["user_invite_accept", "login"]
+      },
+      ["auth:invite_accept", "role:claim_officer", "branch:all"]
+    );
   }
 
   @Get("setup/onboarding-state")
@@ -153,6 +316,7 @@ class PhaseOneController {
     return ok({ hospital_counterparty_id: id, guard: activeSendGuard(), active_for_submission: false });
   }
 
+  @Roles("hospital_admin")
   @Post("hospital-counterparties/:hospital_counterparty_id/activate-submission")
   activateSubmission() {
     activeSendBlocked();
@@ -163,11 +327,13 @@ class PhaseOneController {
     return ok({ items: [{ mailbox_connection_id: syntheticIds.mailboxConnectionId, connection_status: "connected", send_enabled: false, read_enabled: true }] });
   }
 
+  @Roles("hospital_admin")
   @Post("test-emails/send")
   sendTestEmail() {
     return ok({ email_event_id: syntheticIds.emailEventId, status: "sent", no_patient_data: true });
   }
 
+  @Roles("hospital_admin")
   @Post("test-emails/:email_event_id/mark-acknowledged")
   acknowledgeTestEmail(@Param("email_event_id") id: string) {
     return ok({ email_event_id: id, status: "acknowledged", no_patient_data: true, acknowledged_at: nowIso() });
@@ -183,11 +349,13 @@ class PhaseOneController {
     return ok(activeSendGuard());
   }
 
+  @Roles("claim_officer", "hospital_admin")
   @Post("claims/:claim_id/packets/:packet_id/send")
   sendPacket() {
     activeSendBlocked();
   }
 
+  @Roles("claim_officer", "hospital_admin")
   @Post("claims/:claim_id/packets/:packet_id/retry-send")
   retrySend() {
     activeSendBlocked();
@@ -209,11 +377,13 @@ class PhaseOneController {
     return ok({ items: [emailEvent] });
   }
 
+  @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/manual-match")
   manualMatch(@Param("email_event_id") id: string) {
     return ok({ email_event_id: id, claim_id: syntheticIds.claimId, match_status: "manual_matched", audit_action: "match_email" });
   }
 
+  @Roles("claim_officer", "hospital_admin")
   @Post("parser-runs/:parser_run_id/review")
   parserReview(@Param("parser_run_id") id: string) {
     return ok({ parser_run_id: id, confidence: "low", requires_manual_review: true, low_confidence_guard: "no terminal settlement mutation" });
@@ -245,6 +415,7 @@ class AppModule {}
 
 export async function createApp() {
   const app = await NestFactory.create(AppModule, { logger: ["error", "warn", "log"] });
+  app.useGlobalGuards(new SessionGuard(app.get(Reflector)));
   const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3020,http://127.0.0.1:3020")
     .split(",")
     .map((origin) => origin.trim())

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const API_BASE_PATH = "/api/v1";
 export const ACTIVE_SEND_BLOCKED = "ACTIVE_SEND_BLOCKED";
 export const activeSendBlockedCode = ACTIVE_SEND_BLOCKED;
+export const AUTH_SESSION_COOKIE = "eyther_session";
 
 export const syntheticIds = {
   tenantId: "TENANT-TEST-0001",

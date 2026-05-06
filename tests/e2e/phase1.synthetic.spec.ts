@@ -13,6 +13,18 @@ import {
 const apiURL = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:3001/api/v1";
 
 test.describe("Eyther Phase 1 synthetic local journey", () => {
+  test("invite login creates an HTTP-only API session cookie", async ({ page }) => {
+    await gotoPhase1(page, "/");
+    await clickBySemanticTarget(page, { testIds: ["accept-invite"], names: [/accept invite/i] });
+    await expectAnyVisible(page, [/signed in/i, /claim_officer/i, /branch/i]);
+
+    const cookies = await page.context().cookies(new URL(apiURL).origin);
+    const sessionCookie = cookies.find((cookie) => cookie.name === "eyther_session");
+
+    expect(sessionCookie, "invite acceptance should set the API session cookie").toBeTruthy();
+    expect(sessionCookie?.httpOnly, "session cookie must be HTTP-only").toBe(true);
+  });
+
   test("setup and readiness surfaces are healthy and synthetic-only", async ({ page, request }) => {
     const health = await request.get(`${apiURL}/health`);
     expect([200, 204], "API readiness endpoint should be available").toContain(health.status());

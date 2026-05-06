@@ -10,6 +10,7 @@ API_BASE_URL="http://localhost:${API_PORT}/api/v1"
 WEB_BASE_URL="http://localhost:${WEB_PORT}"
 API_LOG="${TMPDIR:-/tmp}/eyther-phase1-api-${API_PORT}.log"
 WEB_LOG="${TMPDIR:-/tmp}/eyther-phase1-web-${WEB_PORT}.log"
+AUTH_COOKIE_JAR="${TMPDIR:-/tmp}/eyther-phase1-auth-${API_PORT}.cookies"
 
 api_pid=""
 web_pid=""
@@ -73,7 +74,14 @@ done
 
 echo
 echo "==> Probing Active Send backend guard"
-curl -sS -X POST "${API_BASE_URL}/claims/CLM-TEST-0001/packets/PACKET-TEST-0001/send" \
+rm -f "$AUTH_COOKIE_JAR"
+curl -fsS -X POST "${API_BASE_URL}/auth/login/start" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"insurance.desk@example.test"}' >/dev/null
+curl -fsS -c "$AUTH_COOKIE_JAR" -X POST "${API_BASE_URL}/auth/login/verify" \
+  -H "Content-Type: application/json" \
+  -d '{"login_challenge_id":"LOGIN-TEST-0001","otp":"000000"}' >/dev/null
+curl -sS -b "$AUTH_COOKIE_JAR" -X POST "${API_BASE_URL}/claims/CLM-TEST-0001/packets/PACKET-TEST-0001/send" \
   | node -e "let body=''; process.stdin.on('data', c => body += c); process.stdin.on('end', () => { const parsed = JSON.parse(body); if (parsed.code !== 'ACTIVE_SEND_BLOCKED') { console.error(body); process.exit(1); } console.log('Active Send guard blocked as expected'); });"
 
 run env PLAYWRIGHT_BASE_URL="$WEB_BASE_URL" PLAYWRIGHT_API_URL="$API_BASE_URL" pnpm exec playwright test
