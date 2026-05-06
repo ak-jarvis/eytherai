@@ -29,6 +29,7 @@ Still intentionally unbuilt or blocked:
 - Backend/API/workers/Postgres target: Railway.com.
 - Frontend target: Vercel.
 - Package manager/runtime: pnpm 10, Node.js 22, Turborepo-compatible monorepo.
+- Local shells should use Node.js 22 via `.node-version` or `.nvmrc`; Node 25 will run with engine warnings and should not be used as release evidence.
 - Fixtures are synthetic only. No real patient records, mailbox screenshots, raw claim files, raw email bodies, raw MIME, OAuth secrets, app passwords, tokens, prescription photos, or identifiable hospital documents.
 - Active Send remains blocked until exact hospital x insurer/TPA/scheme authority route evidence and no-patient-data test-email acknowledgement exist.
 
