@@ -29,13 +29,13 @@ import {
 } from "@eyther/contracts";
 import { eytherScaffold, nowIso } from "@eyther/config";
 import { createAuthStoreFromEnv } from "./auth-store.js";
-import { createPhase1OperationalStore } from "./phase1-operational-store.js";
+import { createPhase1OperationalStoreFromEnv } from "./phase1-operational-store.js";
 
 const api = eytherScaffold.apiBasePath;
 const isPublicKey = "eyther:isPublic";
 const requiredRolesKey = "eyther:requiredRoles";
 const authStore = createAuthStoreFromEnv();
-const phase1Store = createPhase1OperationalStore();
+const phase1Store = createPhase1OperationalStoreFromEnv();
 
 const Public = () => SetMetadata(isPublicKey, true);
 const Roles = (...roles: string[]) => SetMetadata(requiredRolesKey, roles);
@@ -341,41 +341,43 @@ class PhaseOneController {
   }
 
   @Get("setup/onboarding-state")
-  onboarding() {
-    return ok(phase1Store.getOnboardingState());
+  async onboarding() {
+    return ok(await phase1Store.getOnboardingState());
   }
 
   @Roles("hospital_admin")
   @Patch("setup/onboarding-state")
-  patchOnboarding(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.updateOnboardingState(body), ["setup:write"]);
+  async patchOnboarding(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.updateOnboardingState(body), ["setup:write"]);
   }
 
   @Get("hospital-profile")
-  hospitalProfile() {
-    return ok(phase1Store.getHospitalProfile());
+  async hospitalProfile() {
+    return ok(await phase1Store.getHospitalProfile());
   }
 
   @Roles("hospital_admin")
   @Patch("hospital-profile")
-  patchHospitalProfile(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.updateHospitalProfile(body), [
+  async patchHospitalProfile(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.updateHospitalProfile(body), [
       "hospital-profile:write",
     ]);
   }
 
   @Roles("hospital_admin")
   @Post("setup/evidence-artifacts")
-  addEvidenceArtifact(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.addEvidenceArtifact(body), [
+  async addEvidenceArtifact(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.addEvidenceArtifact(body), [
       "setup:evidence-artifact:create",
     ]);
   }
 
   @Roles("hospital_admin")
   @Post("setup/payer-mix/import")
-  importPayerMix(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.importPayerMix(body), ["setup:payer-mix:import"]);
+  async importPayerMix(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.importPayerMix(body), [
+      "setup:payer-mix:import",
+    ]);
   }
 
   @Get("counterparties/master")
@@ -412,30 +414,30 @@ class PhaseOneController {
 
   @Roles("hospital_admin")
   @Post("hospital-counterparties")
-  createHospitalCounterparty(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.createHospitalCounterparty(body), [
+  async createHospitalCounterparty(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.createHospitalCounterparty(body), [
       "counterparty:write",
     ]);
   }
 
   @Roles("hospital_admin")
   @Patch("hospital-counterparties/:hospital_counterparty_id")
-  updateHospitalCounterparty(
+  async updateHospitalCounterparty(
     @Param("hospital_counterparty_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.updateHospitalCounterparty(id, body), [
+    return ok(await phase1Store.updateHospitalCounterparty(id, body), [
       "counterparty:write",
     ]);
   }
 
   @Roles("hospital_admin")
   @Post("hospital-counterparties/:hospital_counterparty_id/rule-sets")
-  createRuleSet(
+  async createRuleSet(
     @Param("hospital_counterparty_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.createRuleSet(id, body), [
+    return ok(await phase1Store.createRuleSet(id, body), [
       "counterparty-rule-set:write",
     ]);
   }
@@ -483,61 +485,63 @@ class PhaseOneController {
 
   @Roles("hospital_admin")
   @Post("test-emails/:email_event_id/mark-failed")
-  markTestEmailFailed(
+  async markTestEmailFailed(
     @Param("email_event_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.markTestEmailFailed(id, body), ["test-email:write"]);
+    return ok(await phase1Store.markTestEmailFailed(id, body), [
+      "test-email:write",
+    ]);
   }
 
   @Get("claims/:claim_id")
-  claimDetail(@Param("claim_id") id: string) {
-    return ok(phase1Store.getClaim(id));
+  async claimDetail(@Param("claim_id") id: string) {
+    return ok(await phase1Store.getClaim(id));
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("claims")
-  createClaim(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.createClaim(body), ["claim:create"]);
+  async createClaim(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.createClaim(body), ["claim:create"]);
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Patch("claims/:claim_id")
-  patchClaim(
+  async patchClaim(
     @Param("claim_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.updateClaim(id, body), ["claim:update"]);
+    return ok(await phase1Store.updateClaim(id, body), ["claim:update"]);
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("claims/:claim_id/packets")
-  createPacket(
+  async createPacket(
     @Param("claim_id") claimId: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.createPacket(claimId, body), ["packet:create"]);
+    return ok(await phase1Store.createPacket(claimId, body), ["packet:create"]);
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("claims/:claim_id/packets/:packet_id/documents")
-  attachDocument(
+  async attachDocument(
     @Param("claim_id") claimId: string,
     @Param("packet_id") packetId: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.attachDocument(claimId, packetId, body), [
+    return ok(await phase1Store.attachDocument(claimId, packetId, body), [
       "document:attach",
     ]);
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("documents/:document_id/replace")
-  replaceDocument(
+  async replaceDocument(
     @Param("document_id") documentId: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.replaceDocument(documentId, body), [
+    return ok(await phase1Store.replaceDocument(documentId, body), [
       "document:replace",
     ]);
   }
@@ -568,45 +572,45 @@ class PhaseOneController {
   }
 
   @Get("worklist")
-  worklist() {
-    return ok(phase1Store.getWorklist());
+  async worklist() {
+    return ok(await phase1Store.getWorklist());
   }
 
   @Get("email-events/manual-match-queue")
-  manualMatchQueue() {
-    return ok(phase1Store.getManualMatchQueue());
+  async manualMatchQueue() {
+    return ok(await phase1Store.getManualMatchQueue());
   }
 
   @Get("email-events/:email_event_id/match-candidates")
-  matchCandidates(@Param("email_event_id") id: string) {
-    return ok(phase1Store.getMatchCandidates(id));
+  async matchCandidates(@Param("email_event_id") id: string) {
+    return ok(await phase1Store.getMatchCandidates(id));
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/manual-match")
-  manualMatch(
+  async manualMatch(
     @Param("email_event_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.manualMatchEmail(id, body));
+    return ok(await phase1Store.manualMatchEmail(id, body));
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/ignore")
-  ignoreEmail(
+  async ignoreEmail(
     @Param("email_event_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.ignoreEmailEvent(id, body));
+    return ok(await phase1Store.ignoreEmailEvent(id, body));
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/quarantine-release")
-  releaseQuarantine(
+  async releaseQuarantine(
     @Param("email_event_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.quarantineRelease(id, body));
+    return ok(await phase1Store.quarantineRelease(id, body));
   }
 
   @Roles("claim_officer", "hospital_admin")
@@ -622,42 +626,42 @@ class PhaseOneController {
 
   @Roles("claim_officer", "hospital_admin")
   @Post("claims/:claim_id/lifecycle-events")
-  addLifecycleEvent(
+  async addLifecycleEvent(
     @Param("claim_id") claimId: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return ok(phase1Store.addLifecycleEvent(claimId, body), [
+    return ok(await phase1Store.addLifecycleEvent(claimId, body), [
       "claim-lifecycle:write",
     ]);
   }
 
   @Get("owner-summary")
-  ownerSummary() {
-    return ok(phase1Store.getOwnerSummary());
+  async ownerSummary() {
+    return ok(await phase1Store.getOwnerSummary());
   }
 
   @Get("finance-summary")
-  financeSummary() {
-    return ok(phase1Store.getFinanceSummary());
+  async financeSummary() {
+    return ok(await phase1Store.getFinanceSummary());
   }
 
   @Post("exports")
-  createExport(@Body() body: Record<string, unknown>) {
-    return ok(phase1Store.createExport(body), ["export:create"]);
+  async createExport(@Body() body: Record<string, unknown>) {
+    return ok(await phase1Store.createExport(body), ["export:create"]);
   }
 
   @Get("exports/:export_id/download")
-  downloadExport(@Param("export_id") id: string) {
-    return ok(phase1Store.downloadExport(id), ["export:download"]);
+  async downloadExport(@Param("export_id") id: string) {
+    return ok(await phase1Store.downloadExport(id), ["export:download"]);
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/reveal-raw")
-  revealRawEmail(
+  async revealRawEmail(
     @Param("email_event_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const result = phase1Store.revealStub("email_event", id, body);
+    const result = await phase1Store.revealStub("email_event", id, body);
     if (result.status === "validation_error") {
       apiError(
         "REVEAL_REASON_REQUIRED",
@@ -670,11 +674,11 @@ class PhaseOneController {
 
   @Roles("claim_officer", "hospital_admin")
   @Post("documents/:document_id/reveal")
-  revealDocument(
+  async revealDocument(
     @Param("document_id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const result = phase1Store.revealStub("document", id, body);
+    const result = await phase1Store.revealStub("document", id, body);
     if (result.status === "validation_error") {
       apiError(
         "REVEAL_REASON_REQUIRED",

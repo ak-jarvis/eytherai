@@ -25,6 +25,7 @@
     "fixtures:scan": "node scripts/check-synthetic-fixtures.mjs",
     "verify:phase1": "bash scripts/verify-phase1-local-ci.sh",
     "verify:prisma-auth": "bash scripts/verify-prisma-auth-local.sh",
+    "verify:prisma-phase1": "bash scripts/verify-prisma-phase1-local.sh",
     "format": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml,prisma}\" --ignore-unknown"
   },
   "devDependencies": {

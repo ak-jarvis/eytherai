@@ -18,16 +18,16 @@ async function main() {
     await tx.authLoginChallenge.deleteMany({ where: { userId: ids.userId } });
     await tx.auditLog.deleteMany({
       where: {
-        OR: [
-          { actorUserId: ids.userId },
-          {
-            tenantId: ids.tenantId,
-            hospitalId: ids.hospitalId,
-            entityType: {
-              in: ["auth_session", "hospital_user", "auth_login_challenge"],
-            },
-          },
-        ],
+        tenantId: ids.tenantId,
+        hospitalId: ids.hospitalId,
+        entityType: {
+          in: [
+            "auth_session",
+            "hospital_user",
+            "auth_login_challenge",
+            "hospital_user_invite",
+          ],
+        },
       },
     });
 
