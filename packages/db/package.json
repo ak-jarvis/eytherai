@@ -12,6 +12,9 @@
     "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "cd ../.. && vitest run packages/db/src/auth-schema.test.ts --passWithNoTests",
+    "auth:seed:synthetic": "tsx src/seed-synthetic-auth.ts",
+    "auth:assert:synthetic": "tsx src/assert-synthetic-auth.ts",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:validate": "DATABASE_URL=postgresql://user:pass@localhost:5432/eyther_synthetic prisma validate --schema prisma/schema.prisma"
   },

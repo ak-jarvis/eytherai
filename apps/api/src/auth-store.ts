@@ -275,6 +275,7 @@ export class PrismaAuthStore implements AuthStore {
 
     const challenge = await (this.prisma as any).authLoginChallenge.create({
       data: {
+        loginChallengeId: randomUUID(),
         tenantId: user.tenantId,
         hospitalId: user.hospitalId,
         userId: user.userId,
@@ -415,6 +416,7 @@ export class PrismaAuthStore implements AuthStore {
           deactivationReason: null,
         },
         create: {
+          userId: randomUUID(),
           tenantId: invite.tenantId,
           hospitalId: invite.hospitalId,
           name: acceptedName,
@@ -425,9 +427,25 @@ export class PrismaAuthStore implements AuthStore {
         },
       });
 
+      await tx.hospitalUserRoleAssignment.deleteMany({
+        where: {
+          tenantId: invite.tenantId,
+          hospitalId: invite.hospitalId,
+          userId: acceptedUser.userId,
+        },
+      });
+      await tx.hospitalUserBranchScope.deleteMany({
+        where: {
+          tenantId: invite.tenantId,
+          hospitalId: invite.hospitalId,
+          userId: acceptedUser.userId,
+        },
+      });
+
       for (const roleKey of invite.roleKeysRequested) {
         await tx.hospitalUserRoleAssignment.create({
           data: {
+            roleAssignmentId: randomUUID(),
             tenantId: invite.tenantId,
             hospitalId: invite.hospitalId,
             userId: acceptedUser.userId,
@@ -440,6 +458,7 @@ export class PrismaAuthStore implements AuthStore {
       if (branchScope.all_branches || branchScope.branch_ids.length === 0) {
         await tx.hospitalUserBranchScope.create({
           data: {
+            branchScopeId: randomUUID(),
             tenantId: invite.tenantId,
             hospitalId: invite.hospitalId,
             userId: acceptedUser.userId,
@@ -451,6 +470,7 @@ export class PrismaAuthStore implements AuthStore {
         for (const branchId of branchScope.branch_ids) {
           await tx.hospitalUserBranchScope.create({
             data: {
+              branchScopeId: randomUUID(),
               tenantId: invite.tenantId,
               hospitalId: invite.hospitalId,
               userId: acceptedUser.userId,
@@ -468,6 +488,7 @@ export class PrismaAuthStore implements AuthStore {
       });
       await tx.auditLog.create({
         data: {
+          auditLogId: randomUUID(),
           tenantId: invite.tenantId,
           hospitalId: invite.hospitalId,
           actorUserId: acceptedUser.userId,
@@ -536,11 +557,30 @@ export class PrismaAuthStore implements AuthStore {
 
   async revokeSessionByToken(token: string | undefined) {
     if (!token) return false;
-    const result = await (this.prisma as any).authSession.updateMany({
-      where: { sessionTokenHash: hashSessionToken(token), revokedAt: null },
-      data: { revokedAt: new Date() },
+    const session = await (this.prisma as any).authSession.findUnique({
+      where: { sessionTokenHash: hashSessionToken(token) },
     });
-    return result.count > 0;
+    if (!session || session.revokedAt) return false;
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.authSession.update({
+        where: { sessionId: session.sessionId },
+        data: { revokedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          auditLogId: randomUUID(),
+          tenantId: session.tenantId,
+          hospitalId: session.hospitalId,
+          actorUserId: session.userId,
+          action: "logout",
+          entityType: "auth_session",
+          entityId: session.sessionId,
+          metadataRedacted: { source: "logout" },
+        },
+      });
+    });
+    return true;
   }
 
   async close() {
@@ -557,6 +597,7 @@ export class PrismaAuthStore implements AuthStore {
   ) {
     await (this.prisma as any).auditLog.create({
       data: {
+        auditLogId: randomUUID(),
         tenantId,
         hospitalId,
         actorUserId,
@@ -580,6 +621,7 @@ export class PrismaAuthStore implements AuthStore {
         if (beforeCreate) await beforeCreate(tx);
         await tx.authSession.create({
           data: {
+            sessionId: randomUUID(),
             tenantId: user.tenantId,
             hospitalId: user.hospitalId,
             userId: user.userId,
@@ -590,6 +632,7 @@ export class PrismaAuthStore implements AuthStore {
         });
         await tx.auditLog.create({
           data: {
+            auditLogId: randomUUID(),
             tenantId: user.tenantId,
             hospitalId: user.hospitalId,
             actorUserId: user.userId,
