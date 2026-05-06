@@ -43,7 +43,7 @@ export default function Home() {
   }, []);
 
   const rows = useMemo(() => worklistRows.filter((row) => stage === "All" || row[3] === stage), [stage]);
-  const activeSendReady = acknowledged && evidenceAttached && noPatientConfirmed;
+  const activeSendEvidenceCaptured = acknowledged && evidenceAttached && noPatientConfirmed;
 
   function downloadFinanceExport() {
     const csv = [
@@ -79,13 +79,13 @@ export default function Home() {
       <section className="login-strip">
         <div><span>Invite / login</span><strong>{loggedIn ? "Insurance desk test session" : "Synthetic invite pending"}</strong><small>Local prototype session only</small></div>
         <div><span>Safety</span><strong>No patient data</strong><small>Synthetic only; no real claim documents, email bodies, or identifiers</small></div>
-        <div><span>Active Send</span><strong>{activeSendReady ? "Allowed" : "Blocked"}</strong><small>{activeSendReady ? "Evidence complete and ready to send" : "Missing evidence or acknowledgement required"}</small></div>
+        <div><span>Active Send</span><strong>Blocked</strong><small>{activeSendEvidenceCaptured ? "Synthetic evidence captured; reviewer/live guard still blocks Send" : "Missing evidence or acknowledgement required"}</small></div>
       </section>
       <section className="metric-grid">
         <Stat label="Claims worklist" value="14" detail="Open cashless claims" tone="info" />
         <Stat label="Manual match queue" value="5" detail="Needs human confirmation" tone="warn" />
         <Stat label="Owner ageing" value="INR 18.4L" detail="Pending movement" tone="bad" />
-        <Stat label="Active Send" value={activeSendReady ? "Allowed" : "Blocked"} detail="Reviewer-gated evidence" tone={activeSendReady ? "good" : "blocked"} />
+        <Stat label="Active Send" value="Blocked" detail="Reviewer-gated live evidence required" tone="blocked" />
       </section>
       <section className="workspace-grid">
         <Panel title="Setup Readiness" kicker="Go-live gates">
@@ -127,8 +127,8 @@ export default function Home() {
       <section className="workspace-grid">
         <Panel title="Active Send Evidence" kicker={claim.id}>
           <div className="status-callout">
-            <Badge tone={activeSendReady ? "good" : "blocked"}>{activeSendReady ? "Allowed" : "Blocked"}</Badge>
-            <strong>{activeSendReady ? "Evidence complete - ready to send" : "Missing evidence - acknowledgement required"}</strong>
+            <Badge tone="blocked">Blocked</Badge>
+            <strong>{activeSendEvidenceCaptured ? "Synthetic evidence captured - live Send still blocked" : "Missing evidence - acknowledgement required"}</strong>
             <span>Active Send remains draft-only until exact hospital x insurer / TPA / scheme authority evidence exists.</span>
           </div>
           <div className="draft-grid">
@@ -145,7 +145,7 @@ export default function Home() {
           <div className="button-row">
             <Button data-testid="attach-send-evidence" onClick={() => { setEvidenceAttached(true); setAcknowledged(true); }}>Attach evidence</Button>
             <Button data-testid="confirm-no-patient-data" onClick={() => setNoPatientConfirmed(true)}>Confirm no patient data</Button>
-            <Button disabled={!activeSendReady} primary>Active Send</Button>
+            <Button disabled primary>Active Send</Button>
           </div>
         </Panel>
         <Panel title="Manual Match Queue" kicker="Unmatched test email">
@@ -174,7 +174,7 @@ export default function Home() {
       </section>
       <Panel title="Audit And Redaction Evidence" kicker="Reviewer evidence">
         <div className="audit-grid">
-          <AuditItem label="Active Send" value={activeSendReady ? "Allowed after evidence" : "Blocked until evidence"} />
+          <AuditItem label="Active Send" value={activeSendEvidenceCaptured ? "Still blocked after synthetic evidence" : "Blocked until evidence"} />
           <AuditItem label="Manual match" value={manualMatched ? "Linked with human confirmation" : "Open for review"} />
           <AuditItem label="Test email" value={acknowledged ? "Acknowledged without patient data" : "Pending acknowledgement"} />
           <AuditItem label="Redaction" value="Redacted by default" />

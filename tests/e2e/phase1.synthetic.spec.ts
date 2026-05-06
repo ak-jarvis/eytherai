@@ -42,15 +42,15 @@ test.describe("Eyther Phase 1 synthetic local journey", () => {
     await expectResponsiveSmoke(page);
   });
 
-  test("Active Send is blocked without evidence and allowed after evidence is present", async ({ page }) => {
+  test("Active Send stays blocked after synthetic evidence capture", async ({ page }) => {
     await gotoPhase1(page, `/claims/${syntheticScenario.claim.claimId}`);
     await expectAnyVisible(page, [/Active Send/i, /evidence/i, /test email/i]);
     await expectButtonState(page, /Active Send/i, "disabled");
     await expectAnyVisible(page, [/blocked/i, /missing evidence/i, /acknowledgement required/i]);
     await clickBySemanticTarget(page, { testIds: ["attach-send-evidence"], names: [/attach evidence/i] });
     await clickBySemanticTarget(page, { testIds: ["confirm-no-patient-data"], names: [/no patient data/i] });
-    await expectButtonState(page, /Active Send/i, "enabled");
-    await expectAnyVisible(page, [/allowed/i, /ready to send/i, /evidence complete/i]);
+    await expectButtonState(page, /Active Send/i, "disabled");
+    await expectAnyVisible(page, [/still blocked/i, /synthetic evidence/i, /live Send/i]);
     await expectNoRealPii(page);
   });
 
