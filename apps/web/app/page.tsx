@@ -7,6 +7,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api/v1";
 const INVITE_ID = "INVITE-TEST-0001";
 const SYNTHETIC_OTP = "000000";
+const SESSION_STORAGE_KEY = "eyther_phase1_synthetic_user";
 
 const claim = {
   id: "CLM-TEST-0001",
@@ -122,6 +123,18 @@ type AuthUser = {
 
 type AuthStatus = "pending" | "starting" | "signed_in" | "error";
 
+function readStoredUser() {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
 function usePhaseSession() {
   const [apiLive, setApiLive] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("pending");
@@ -132,6 +145,30 @@ function usePhaseSession() {
     fetch(`${API_BASE}/health`, { signal: controller.signal })
       .then((response) => setApiLive(response.ok))
       .catch(() => setApiLive(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const storedUser = readStoredUser();
+    if (!storedUser) return;
+
+    const controller = new AbortController();
+    fetch(`${API_BASE}/worklist`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Stored session rejected");
+        setAuthUser(storedUser);
+        setAuthStatus("signed_in");
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        setAuthUser(null);
+        setAuthStatus("pending");
+      });
+
     return () => controller.abort();
   }, []);
 
@@ -158,8 +195,13 @@ function usePhaseSession() {
         throw new Error(verifyPayload?.message ?? "Invite acceptance failed");
 
       setAuthUser(verifyPayload.data.user);
+      window.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify(verifyPayload.data.user),
+      );
       setAuthStatus("signed_in");
     } catch {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
       setAuthStatus("error");
     }
   }
@@ -171,6 +213,7 @@ function usePhaseSession() {
         credentials: "include",
       });
     } finally {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
       setAuthUser(null);
       setAuthStatus("pending");
     }
