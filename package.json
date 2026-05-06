@@ -16,6 +16,7 @@
     "build:worker": "pnpm --filter @eyther/worker build",
     "start:worker": "pnpm --filter @eyther/worker start",
     "build:web": "pnpm --filter @eyther/web build",
+    "start:web": "pnpm --filter @eyther/web start",
     "lint": "node scripts/lint.mjs",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run --passWithNoTests",

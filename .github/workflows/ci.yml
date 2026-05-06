@@ -24,3 +24,26 @@ jobs:
       - run: pnpm build
       - run: pnpm fixtures:scan
       - run: pnpm pii:scan
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright synthetic Phase 1 journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=3011 pnpm start:api > /tmp/eyther-api.log 2>&1 &
+          api_pid=$!
+          NEXT_PUBLIC_API_BASE_URL=http://localhost:3011/api/v1 pnpm start:web > /tmp/eyther-web.log 2>&1 &
+          web_pid=$!
+          trap 'kill "$api_pid" "$web_pid" 2>/dev/null || true; cat /tmp/eyther-api.log /tmp/eyther-web.log' EXIT
+
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:3011/api/v1/health >/dev/null && curl -fsS http://localhost:3000/setup >/dev/null; then
+              break
+            fi
+            sleep 1
+            if [ "$attempt" -eq 60 ]; then
+              echo "Local API/web did not become ready for Playwright"
+              exit 1
+            fi
+          done
+
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 PLAYWRIGHT_API_URL=http://localhost:3011/api/v1 pnpm exec playwright test
