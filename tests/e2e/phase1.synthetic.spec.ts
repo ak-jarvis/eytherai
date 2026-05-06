@@ -19,6 +19,8 @@ test.describe("Eyther Phase 1 synthetic local journey", () => {
 
     await gotoPhase1(page, "/setup");
     await expectAnyVisible(page, [/setup/i, /readiness/i, /phase 1/i]);
+    await expect(page.getByText(/Live API/i).first()).toBeVisible();
+    await expect(page.getByText(/Connected/i).first()).toBeVisible();
     await expectAnyVisible(page, [/synthetic/i, /test data/i, /no patient/i]);
     await expectNoRealPii(page);
     await expectAccessibilitySmoke(page);
