@@ -1,0 +1,29 @@
+{
+  "name": "eytherai",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22 <26",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "node scripts/lint-scaffold.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "pii:scan": "node scripts/pii-scan.mjs",
+    "db:validate": "pnpm --filter @eyther/db db:validate",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm db:validate && pnpm build && pnpm pii:scan"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

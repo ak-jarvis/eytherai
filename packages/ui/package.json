@@ -1,0 +1,16 @@
+{
+  "name": "@eyther/ui",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.tsx" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0"
+  }
+}

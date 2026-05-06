@@ -1,0 +1,10 @@
+[
+  {
+    "claimId": "synthetic_claim_001",
+    "hospitalBranchCode": "branch_demo",
+    "status": "query_pending",
+    "outstandingAmountPaise": 1250000,
+    "counterpartyType": "TPA",
+    "note": "Synthetic hospital cashless query row for CI only."
+  }
+]

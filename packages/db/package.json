@@ -1,0 +1,17 @@
+{
+  "name": "@eyther/db",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/client.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://synthetic:synthetic@localhost:5432/eyther_synthetic} prisma validate --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.2.1"
+  }
+}
