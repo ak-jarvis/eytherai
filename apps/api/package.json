@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "cd ../.. && vitest run apps/api/src/main.test.ts --passWithNoTests"
   },
   "dependencies": {
     "@eyther/config": "workspace:*",
