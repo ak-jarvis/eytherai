@@ -9,9 +9,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "cd ../.. && vitest run packages/db/src/auth-schema.test.ts --passWithNoTests",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:validate": "DATABASE_URL=postgresql://user:pass@localhost:5432/eyther_synthetic prisma validate --schema prisma/schema.prisma"
   },
   "dependencies": {

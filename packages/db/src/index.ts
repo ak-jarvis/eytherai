@@ -1,3 +1,5 @@
+import { PrismaClient } from "@prisma/client";
+
 export const databaseContract = {
   provider: "railway-postgres",
   orm: "prisma",
@@ -10,3 +12,9 @@ export const syntheticDbSeed = {
   mailbox_connection_id: "mailbox_demo_001",
   note: "Synthetic local Phase 1 seed only; no real patient PII, mailbox credentials, or hospital claim documents.",
 } as const;
+
+export type EytherPrismaClient = PrismaClient;
+
+export function createPrismaClient() {
+  return new PrismaClient();
+}

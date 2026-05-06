@@ -8,11 +8,12 @@
     "start": "node dist/apps/api/src/main.js",
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "cd ../.. && vitest run apps/api/src/main.test.ts --passWithNoTests"
+    "test": "cd ../.. && vitest run apps/api/src/main.test.ts apps/api/src/auth-store.test.ts --passWithNoTests"
   },
   "dependencies": {
     "@eyther/config": "workspace:*",
     "@eyther/contracts": "workspace:*",
+    "@eyther/db": "workspace:*",
     "@nestjs/common": "^11.1.9",
     "@nestjs/core": "^11.1.9",
     "@nestjs/platform-express": "^11.1.9",

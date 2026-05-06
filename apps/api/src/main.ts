@@ -13,10 +13,9 @@ import {
   Post,
   Req,
   Res,
-  SetMetadata
+  SetMetadata,
 } from "@nestjs/common";
 import { NestFactory, Reflector } from "@nestjs/core";
-import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
   ACTIVE_SEND_BLOCKED,
@@ -25,42 +24,18 @@ import {
   type HealthResponse,
   healthResponseSchema,
   sendEligibilitySchema,
-  syntheticIds
+  syntheticIds,
 } from "@eyther/contracts";
 import { eytherScaffold, nowIso } from "@eyther/config";
+import { createAuthStoreFromEnv } from "./auth-store.js";
 
 const api = eytherScaffold.apiBasePath;
 const isPublicKey = "eyther:isPublic";
 const requiredRolesKey = "eyther:requiredRoles";
-const loginChallengeId = "LOGIN-TEST-0001";
-const syntheticOtp = "000000";
-const syntheticEmail = "insurance.desk@example.test";
+const authStore = createAuthStoreFromEnv();
 
 const Public = () => SetMetadata(isPublicKey, true);
 const Roles = (...roles: string[]) => SetMetadata(requiredRolesKey, roles);
-
-const authUser = {
-  user_id: syntheticIds.userId,
-  tenant_id: syntheticIds.tenantId,
-  hospital_id: syntheticIds.hospitalId,
-  name: "Insurance Desk Test Owner",
-  email: syntheticEmail,
-  roles: ["hospital_admin", "claim_officer", "billing_finance"],
-  branch_scope: { all_branches: true, branch_ids: [] as string[] }
-};
-
-let inviteStatus: "pending" | "accepted" = "pending";
-const authSessions = new Map<
-  string,
-  {
-    session_id: string;
-    user: typeof authUser;
-    created_at: string;
-    expires_at: string;
-    revoked_at: string | null;
-    session_fresh_until: string;
-  }
->();
 
 const claim = {
   claim_id: syntheticIds.claimId,
@@ -73,7 +48,7 @@ const claim = {
   current_stage: "draft_preauth",
   current_status: "Awaiting evidence",
   claim_value_inr: 125000,
-  redaction_level: "masked_default"
+  redaction_level: "masked_default",
 };
 
 const emailEvent = {
@@ -81,7 +56,7 @@ const emailEvent = {
   subject_sanitized: `Test email acknowledgement for ${syntheticIds.claimId}`,
   body_preview_redacted: "Synthetic acknowledgement only. No patient data.",
   match_status: "needs_review",
-  raw_access: "restricted"
+  raw_access: "restricted",
 };
 
 function correlationId() {
@@ -91,36 +66,49 @@ function correlationId() {
 function ok(data: unknown, permissions = ["phase1:synthetic-read"]) {
   return {
     data,
-    meta: { correlation_id: correlationId(), permissions, redaction_level: "masked_default" },
-    errors: []
+    meta: {
+      correlation_id: correlationId(),
+      permissions,
+      redaction_level: "masked_default",
+    },
+    errors: [],
   };
 }
 
 function activeSendGuard() {
   return sendEligibilitySchema.parse({
     allowed: false,
-    blocked_reason_codes: ["missing_empanelment_id", "missing_accepted_route", "missing_test_email_acknowledgement"],
+    blocked_reason_codes: [
+      "missing_empanelment_id",
+      "missing_accepted_route",
+      "missing_test_email_acknowledgement",
+    ],
     required_evidence: [
       "hospital_artifact_status=verified",
       "test_email_status=acknowledged",
       "live_validation_status=acknowledged",
       "mailbox.send_enabled=true",
-      "whitelisted_sender_email matched"
+      "whitelisted_sender_email matched",
     ],
-    safe_next_action: "send_test_email"
+    safe_next_action: "send_test_email",
   });
 }
 
-function apiError(code: string, message: string, status: HttpStatus, blockedReasonCodes: string[] = []): never {
+function apiError(
+  code: string,
+  message: string,
+  status: HttpStatus,
+  blockedReasonCodes: string[] = [],
+): never {
   throw new HttpException(
     {
       code,
       message,
       field: null,
       blocked_reason_codes: blockedReasonCodes,
-      correlation_id: correlationId()
+      correlation_id: correlationId(),
     },
-    status
+    status,
   );
 }
 
@@ -133,80 +121,74 @@ function parseCookieHeader(cookieHeader: string | undefined) {
       .map((part) => {
         const [name, ...valueParts] = part.split("=");
         return [name, valueParts.join("=")];
-      })
+      }),
   );
 }
 
-function hashSessionToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function authSessionFromCookie(cookieHeader: string | undefined) {
-  const cookies = parseCookieHeader(cookieHeader);
-  const token = cookies[AUTH_SESSION_COOKIE];
-  if (!token) return null;
-
-  const session = authSessions.get(hashSessionToken(token));
-  if (!session || session.revoked_at || Date.parse(session.expires_at) <= Date.now()) return null;
-
-  return session;
-}
-
-function setCookie(response: { setHeader(name: string, value: string): void }, value: string, maxAgeSeconds: number) {
-  const attributes = [`${AUTH_SESSION_COOKIE}=${value}`, "HttpOnly", "SameSite=Lax", "Path=/", `Max-Age=${maxAgeSeconds}`];
+function setCookie(
+  response: { setHeader(name: string, value: string): void },
+  value: string,
+  maxAgeSeconds: number,
+) {
+  const attributes = [
+    `${AUTH_SESSION_COOKIE}=${value}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAgeSeconds}`,
+  ];
   if (process.env.NODE_ENV === "production") attributes.push("Secure");
   response.setHeader("Set-Cookie", attributes.join("; "));
 }
 
-function createAuthSession(response: { setHeader(name: string, value: string): void }) {
-  const token = randomUUID();
-  const sessionFreshUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-
-  authSessions.set(hashSessionToken(token), {
-    session_id: randomUUID(),
-    user: authUser,
-    created_at: nowIso(),
-    expires_at: expiresAt,
-    revoked_at: null,
-    session_fresh_until: sessionFreshUntil
-  });
+function setSessionCookie(
+  response: { setHeader(name: string, value: string): void },
+  token: string,
+) {
   setCookie(response, token, 8 * 60 * 60);
-
-  return {
-    user: authUser,
-    session_fresh_until: sessionFreshUntil
-  };
-}
-
-function revokeAuthSession(cookieHeader: string | undefined) {
-  const token = parseCookieHeader(cookieHeader)[AUTH_SESSION_COOKIE];
-  if (!token) return false;
-  const session = authSessions.get(hashSessionToken(token));
-  if (!session || session.revoked_at) return false;
-
-  session.revoked_at = nowIso();
-  return true;
 }
 
 @Injectable()
 class SessionGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext) {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(isPublicKey, [context.getHandler(), context.getClass()]);
+  async canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(isPublicKey, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (isPublic) return true;
 
-    const request = context.switchToHttp().getRequest<{ headers: { cookie?: string }; auth?: typeof authUser }>();
-    const session = authSessionFromCookie(request.headers.cookie);
+    const request = context
+      .switchToHttp()
+      .getRequest<{ headers: { cookie?: string }; auth?: unknown }>();
+    const token = parseCookieHeader(request.headers.cookie)[
+      AUTH_SESSION_COOKIE
+    ];
+    const session = await authStore.getSessionByToken(token);
     if (!session) {
-      apiError("UNAUTHENTICATED", "Login session is required.", HttpStatus.UNAUTHORIZED);
+      apiError(
+        "UNAUTHENTICATED",
+        "Login session is required.",
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     request.auth = session.user;
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(requiredRolesKey, [context.getHandler(), context.getClass()]) ?? [];
-    if (requiredRoles.length && !requiredRoles.some((role) => session.user.roles.includes(role))) {
-      apiError("FORBIDDEN", "Your role cannot perform this action.", HttpStatus.FORBIDDEN);
+    const requiredRoles =
+      this.reflector.getAllAndOverride<string[]>(requiredRolesKey, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? [];
+    if (
+      requiredRoles.length &&
+      !requiredRoles.some((role) => session.user.roles.includes(role))
+    ) {
+      apiError(
+        "FORBIDDEN",
+        "Your role cannot perform this action.",
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     return true;
@@ -217,12 +199,13 @@ function activeSendBlocked() {
   throw new HttpException(
     {
       code: ACTIVE_SEND_BLOCKED,
-      message: "Active Send is blocked until exact hospital x counterparty route evidence and no-patient-data acknowledgement are present.",
+      message:
+        "Active Send is blocked until exact hospital x counterparty route evidence and no-patient-data acknowledgement are present.",
       field: null,
       blocked_reason_codes: activeSendGuard().blocked_reason_codes,
-      correlation_id: correlationId()
+      correlation_id: correlationId(),
     },
-    HttpStatus.LOCKED
+    HttpStatus.LOCKED,
   );
 }
 
@@ -231,7 +214,11 @@ class HealthController {
   @Public()
   @Get("health")
   health(): HealthResponse {
-    return healthResponseSchema.parse({ ok: true, service: "api", phase: "phase-1-local" });
+    return healthResponseSchema.parse({
+      ok: true,
+      service: "api",
+      phase: "phase-1-local",
+    });
   }
 
   @Public()
@@ -245,77 +232,108 @@ class HealthController {
 class PhaseOneController {
   @Public()
   @Post("auth/login/start")
-  loginStart(@Body() body: { email?: string }) {
-    if (body.email !== syntheticEmail) {
-      apiError("UNAUTHENTICATED", "Only named invited users can start login.", HttpStatus.UNAUTHORIZED);
+  async loginStart(@Body() body: { email?: string }) {
+    const challenge = await authStore.startLogin(body.email);
+    if (!challenge) {
+      apiError(
+        "UNAUTHENTICATED",
+        "Only named invited users can start login.",
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
-    return ok({
-      login_challenge_id: loginChallengeId,
-      delivery: "synthetic_email",
-      masked_destination: "in***@example.test",
-      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString()
-    });
+    return ok(challenge);
   }
 
   @Public()
   @Post("auth/login/verify")
-  loginVerify(@Body() body: { login_challenge_id?: string; otp?: string }, @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }) {
-    if (body.login_challenge_id !== loginChallengeId || body.otp !== syntheticOtp) {
-      apiError("UNAUTHENTICATED", "Login code could not be verified.", HttpStatus.UNAUTHORIZED);
+  async loginVerify(
+    @Body() body: { login_challenge_id?: string; otp?: string },
+    @Res({ passthrough: true })
+    response: { setHeader(name: string, value: string): void },
+  ) {
+    const session = await authStore.verifyLogin(
+      body.login_challenge_id,
+      body.otp,
+    );
+    if (!session) {
+      apiError(
+        "UNAUTHENTICATED",
+        "Login code could not be verified.",
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
-    return ok(createAuthSession(response), ["auth:login", "role:claim_officer", "branch:all"]);
+    setSessionCookie(response, session.token);
+    return ok(
+      { user: session.user, session_fresh_until: session.session_fresh_until },
+      ["auth:login", "role:claim_officer", "branch:all"],
+    );
   }
 
   @Post("auth/logout")
-  logout(@Req() request: { headers: { cookie?: string } }, @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }) {
-    revokeAuthSession(request.headers.cookie);
+  async logout(
+    @Req() request: { headers: { cookie?: string } },
+    @Res({ passthrough: true })
+    response: { setHeader(name: string, value: string): void },
+  ) {
+    await authStore.revokeSessionByToken(
+      parseCookieHeader(request.headers.cookie)[AUTH_SESSION_COOKIE],
+    );
     setCookie(response, "", 0);
-    return ok({ session_status: "revoked", audit_action: "logout" }, ["auth:logout"]);
+    return ok({ session_status: "revoked", audit_action: "logout" }, [
+      "auth:logout",
+    ]);
   }
 
   @Public()
   @Get("invites/:invite_id")
-  invite(@Param("invite_id") inviteId: string) {
-    if (inviteId !== syntheticIds.inviteId) {
+  async invite(@Param("invite_id") inviteId: string) {
+    const invite = await authStore.getInvite(inviteId);
+    if (!invite) {
       apiError("NOT_FOUND", "Invite was not found.", HttpStatus.NOT_FOUND);
     }
 
-    return ok({
-      invite_id: inviteId,
-      invite_status: inviteStatus,
-      hospital: { display_name: "Lotus Valley Test Hospital", city: "Indore", state: "Madhya Pradesh" },
-      email_masked: "in***@example.test",
-      requested_roles: authUser.roles,
-      branch_scope: authUser.branch_scope,
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-    });
+    return ok(invite);
   }
 
   @Public()
   @Post("invites/:invite_id/accept")
-  acceptInvite(
+  async acceptInvite(
     @Param("invite_id") inviteId: string,
     @Body() body: { name?: string; phone?: string | null; otp?: string },
-    @Res({ passthrough: true }) response: { setHeader(name: string, value: string): void }
+    @Res({ passthrough: true })
+    response: { setHeader(name: string, value: string): void },
   ) {
-    if (inviteId !== syntheticIds.inviteId) {
+    const result = await authStore.acceptInvite(inviteId, body);
+    if (result.status === "not_found") {
       apiError("NOT_FOUND", "Invite was not found.", HttpStatus.NOT_FOUND);
     }
-    if (!body.name?.trim() || body.otp !== syntheticOtp) {
-      apiError("VALIDATION_ERROR", "Invite acceptance requires name and the synthetic OTP.", HttpStatus.BAD_REQUEST);
+    if (result.status === "validation_error") {
+      apiError(
+        "VALIDATION_ERROR",
+        "Invite acceptance requires name and the synthetic OTP.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (result.status === "not_accepting") {
+      apiError(
+        "INVITE_NOT_ACCEPTING",
+        "Invite is expired, revoked, or already accepted.",
+        HttpStatus.CONFLICT,
+      );
     }
 
-    inviteStatus = "accepted";
+    setSessionCookie(response, result.session.token);
     return ok(
       {
-        invite_id: inviteId,
-        invite_status: inviteStatus,
-        ...createAuthSession(response),
-        audit_actions: ["user_invite_accept", "login"]
+        invite_id: result.invite_id,
+        invite_status: result.invite_status,
+        user: result.session.user,
+        session_fresh_until: result.session.session_fresh_until,
+        audit_actions: result.audit_actions,
       },
-      ["auth:invite_accept", "role:claim_officer", "branch:all"]
+      ["auth:invite_accept", "role:claim_officer", "branch:all"],
     );
   }
 
@@ -329,8 +347,8 @@ class PhaseOneController {
         { key: "profile", status: "ready" },
         { key: "mailbox", status: "test_mode" },
         { key: "counterparty", status: "evidence_gated" },
-        { key: "test_email", status: "sent" }
-      ]
+        { key: "test_email", status: "sent" },
+      ],
     });
   }
 
@@ -341,7 +359,7 @@ class PhaseOneController {
       hospital_id: syntheticIds.hospitalId,
       display_name: "Lotus Valley Test Hospital",
       insurance_desk_email_masked: "in***@example.test",
-      redaction_level: "masked_default"
+      redaction_level: "masked_default",
     });
   }
 
@@ -349,16 +367,32 @@ class PhaseOneController {
   counterparties() {
     return ok({
       items: [
-        { counterparty_id: "COUNTERPARTY-TEST-0001", counterparty_type: "tpa", display_name: "Example TPA Sandbox" },
-        { counterparty_id: "COUNTERPARTY-TEST-0002", counterparty_type: "insurer", display_name: "Example Insurer Desk" },
-        { counterparty_id: "COUNTERPARTY-TEST-0003", counterparty_type: "scheme_authority", display_name: "Example Scheme Authority" }
-      ]
+        {
+          counterparty_id: "COUNTERPARTY-TEST-0001",
+          counterparty_type: "tpa",
+          display_name: "Example TPA Sandbox",
+        },
+        {
+          counterparty_id: "COUNTERPARTY-TEST-0002",
+          counterparty_type: "insurer",
+          display_name: "Example Insurer Desk",
+        },
+        {
+          counterparty_id: "COUNTERPARTY-TEST-0003",
+          counterparty_type: "scheme_authority",
+          display_name: "Example Scheme Authority",
+        },
+      ],
     });
   }
 
   @Get("hospital-counterparties/:hospital_counterparty_id/readiness")
   readiness(@Param("hospital_counterparty_id") id: string) {
-    return ok({ hospital_counterparty_id: id, guard: activeSendGuard(), active_for_submission: false });
+    return ok({
+      hospital_counterparty_id: id,
+      guard: activeSendGuard(),
+      active_for_submission: false,
+    });
   }
 
   @Roles("hospital_admin")
@@ -369,19 +403,37 @@ class PhaseOneController {
 
   @Get("mailboxes")
   mailboxes() {
-    return ok({ items: [{ mailbox_connection_id: syntheticIds.mailboxConnectionId, connection_status: "connected", send_enabled: false, read_enabled: true }] });
+    return ok({
+      items: [
+        {
+          mailbox_connection_id: syntheticIds.mailboxConnectionId,
+          connection_status: "connected",
+          send_enabled: false,
+          read_enabled: true,
+        },
+      ],
+    });
   }
 
   @Roles("hospital_admin")
   @Post("test-emails/send")
   sendTestEmail() {
-    return ok({ email_event_id: syntheticIds.emailEventId, status: "sent", no_patient_data: true });
+    return ok({
+      email_event_id: syntheticIds.emailEventId,
+      status: "sent",
+      no_patient_data: true,
+    });
   }
 
   @Roles("hospital_admin")
   @Post("test-emails/:email_event_id/mark-acknowledged")
   acknowledgeTestEmail(@Param("email_event_id") id: string) {
-    return ok({ email_event_id: id, status: "acknowledged", no_patient_data: true, acknowledged_at: nowIso() });
+    return ok({
+      email_event_id: id,
+      status: "acknowledged",
+      no_patient_data: true,
+      acknowledged_at: nowIso(),
+    });
   }
 
   @Get("claims/:claim_id")
@@ -411,9 +463,21 @@ class PhaseOneController {
     return ok({
       items: [
         claim,
-        { ...claim, claim_id: "CLM-TEST-0002", patient_display_name: "Test Patient Beta", current_status: "Doctor note pending", claim_value_inr: 84000 },
-        { ...claim, claim_id: "CLM-TEST-0003", patient_display_name: "Test Patient Gamma", current_status: "Short payment review", claim_value_inr: 218000 }
-      ]
+        {
+          ...claim,
+          claim_id: "CLM-TEST-0002",
+          patient_display_name: "Test Patient Beta",
+          current_status: "Doctor note pending",
+          claim_value_inr: 84000,
+        },
+        {
+          ...claim,
+          claim_id: "CLM-TEST-0003",
+          patient_display_name: "Test Patient Gamma",
+          current_status: "Short payment review",
+          claim_value_inr: 218000,
+        },
+      ],
     });
   }
 
@@ -425,33 +489,62 @@ class PhaseOneController {
   @Roles("claim_officer", "hospital_admin")
   @Post("email-events/:email_event_id/manual-match")
   manualMatch(@Param("email_event_id") id: string) {
-    return ok({ email_event_id: id, claim_id: syntheticIds.claimId, match_status: "manual_matched", audit_action: "match_email" });
+    return ok({
+      email_event_id: id,
+      claim_id: syntheticIds.claimId,
+      match_status: "manual_matched",
+      audit_action: "match_email",
+    });
   }
 
   @Roles("claim_officer", "hospital_admin")
   @Post("parser-runs/:parser_run_id/review")
   parserReview(@Param("parser_run_id") id: string) {
-    return ok({ parser_run_id: id, confidence: "low", requires_manual_review: true, low_confidence_guard: "no terminal settlement mutation" });
+    return ok({
+      parser_run_id: id,
+      confidence: "low",
+      requires_manual_review: true,
+      low_confidence_guard: "no terminal settlement mutation",
+    });
   }
 
   @Get("owner-summary")
   ownerSummary() {
-    return ok({ owner: claim.owner, open_claims: 14, outstanding_value_inr: 1840000, redaction_level: "aggregate_masked" });
+    return ok({
+      owner: claim.owner,
+      open_claims: 14,
+      outstanding_value_inr: 1840000,
+      redaction_level: "aggregate_masked",
+    });
   }
 
   @Get("finance-summary")
   financeSummary() {
-    return ok({ settlement_total_inr: 690000, short_payment_review_inr: 218000, payment_advice_status: "synthetic_redacted" });
+    return ok({
+      settlement_total_inr: 690000,
+      short_payment_review_inr: 218000,
+      payment_advice_status: "synthetic_redacted",
+    });
   }
 
   @Post("exports")
   createExport() {
-    return ok({ export_id: syntheticIds.exportId, status: "ready", filename: "synthetic-finance-export.csv", expires_at: nowIso() });
+    return ok({
+      export_id: syntheticIds.exportId,
+      status: "ready",
+      filename: "synthetic-finance-export.csv",
+      expires_at: nowIso(),
+    });
   }
 
   @Get("exports/:export_id/download")
   downloadExport(@Param("export_id") id: string) {
-    return ok({ export_id: id, filename: "synthetic-finance-export.csv", content_type: "text/csv", redaction_status: "redacted" });
+    return ok({
+      export_id: id,
+      filename: "synthetic-finance-export.csv",
+      content_type: "text/csv",
+      redaction_status: "redacted",
+    });
   }
 }
 
@@ -459,9 +552,14 @@ class PhaseOneController {
 class AppModule {}
 
 export async function createApp() {
-  const app = await NestFactory.create(AppModule, { logger: ["error", "warn", "log"] });
+  const app = await NestFactory.create(AppModule, {
+    logger: ["error", "warn", "log"],
+  });
   app.useGlobalGuards(new SessionGuard(app.get(Reflector)));
-  const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3020,http://127.0.0.1:3020")
+  const corsOrigins = (
+    process.env.CORS_ORIGINS ??
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3020,http://127.0.0.1:3020"
+  )
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -475,6 +573,9 @@ async function bootstrap() {
   await app.listen(port, "0.0.0.0");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   void bootstrap();
 }

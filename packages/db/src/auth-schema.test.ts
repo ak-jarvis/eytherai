@@ -1,7 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+const schema = readFileSync(
+  new URL("../prisma/schema.prisma", import.meta.url),
+  "utf8",
+);
+const migration = readFileSync(
+  new URL(
+    "../prisma/migrations/20260506192500_auth_persistence_schema/migration.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 function model(name: string) {
   const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -21,7 +31,7 @@ describe("Phase 1 auth Prisma schema", () => {
       "HospitalUserInvite",
       "AuthLoginChallenge",
       "AuthSession",
-      "AuditLog"
+      "AuditLog",
     ]) {
       expect(() => model(name)).not.toThrow();
     }
@@ -41,8 +51,35 @@ describe("Phase 1 auth Prisma schema", () => {
   });
 
   it("supports auth audit actions required by the reviewer gate", () => {
-    for (const action of ["login", "failed_login", "logout", "user_invite_accept", "user_invite_revoke", "forbidden_access"]) {
+    for (const action of [
+      "login",
+      "failed_login",
+      "logout",
+      "user_invite_accept",
+      "user_invite_revoke",
+      "forbidden_access",
+    ]) {
       expect(schema).toContain(action);
     }
+  });
+
+  it("ships an applyable Postgres migration for the auth tables", () => {
+    for (const table of [
+      "Tenant",
+      "Hospital",
+      "HospitalUser",
+      "HospitalUserInvite",
+      "AuthLoginChallenge",
+      "AuthSession",
+      "AuditLog",
+    ]) {
+      expect(migration).toContain(`CREATE TABLE "${table}"`);
+    }
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "AuthSession_sessionTokenHash_key"',
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "HospitalUser_tenantId_loginIdentifierEmail_key"',
+    );
   });
 });
