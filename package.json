@@ -26,6 +26,7 @@
     "verify:phase1": "bash scripts/verify-phase1-local-ci.sh",
     "verify:prisma-auth": "bash scripts/verify-prisma-auth-local.sh",
     "verify:prisma-phase1": "bash scripts/verify-prisma-phase1-local.sh",
+    "verify:external-gates": "bash scripts/verify-external-release-gates.sh",
     "format": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml,prisma}\" --ignore-unknown"
   },
   "devDependencies": {
