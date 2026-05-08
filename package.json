@@ -1,0 +1,47 @@
+{
+  "name": "eyther-product",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Eyther Phase 1 product repo scaffold for a hospital-side unified cashless claims dashboard.",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c blue,magenta,green \"pnpm --filter @eyther/api dev\" \"pnpm --filter @eyther/worker dev\" \"pnpm --filter @eyther/web dev\"",
+    "dev:api": "pnpm --filter @eyther/api dev",
+    "dev:web": "pnpm --filter @eyther/web dev",
+    "build:api": "pnpm --filter @eyther/api build",
+    "start:api": "pnpm --filter @eyther/api start",
+    "build:worker": "pnpm --filter @eyther/worker build",
+    "start:worker": "pnpm --filter @eyther/worker start",
+    "build:web": "pnpm --filter @eyther/web build",
+    "start:web": "pnpm --filter @eyther/web start",
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run --passWithNoTests",
+    "build": "pnpm -r build",
+    "pii:scan": "node scripts/pii-scan.mjs",
+    "fixtures:scan": "node scripts/check-synthetic-fixtures.mjs",
+    "verify:phase1": "bash scripts/verify-phase1-local-ci.sh",
+    "verify:prisma-auth": "bash scripts/verify-prisma-auth-local.sh",
+    "verify:prisma-phase1": "bash scripts/verify-prisma-phase1-local.sh",
+    "verify:external-gates": "bash scripts/verify-external-release-gates.sh",
+    "format": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml,prisma}\" --ignore-unknown"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/supertest": "^6.0.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.7.4",
+    "supertest": "^7.1.4",
+    "tsx": "^4.21.0",
+    "turbo": "^2.9.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

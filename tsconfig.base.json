@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@eyther/contracts": ["packages/contracts/src/index.ts"],
+      "@eyther/config": ["packages/config/src/index.ts"],
+      "@eyther/db": ["packages/db/src/index.ts"],
+      "@eyther/ui": ["packages/ui/src/index.tsx"]
+    }
+  }
+}

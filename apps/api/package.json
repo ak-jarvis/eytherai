@@ -1,0 +1,24 @@
+{
+  "name": "@eyther/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/apps/api/src/main.js",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "cd ../.. && vitest run apps/api/src/main.test.ts apps/api/src/auth-store.test.ts --passWithNoTests"
+  },
+  "dependencies": {
+    "@eyther/config": "workspace:*",
+    "@eyther/contracts": "workspace:*",
+    "@eyther/db": "workspace:*",
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.2.1"
+  }
+}
