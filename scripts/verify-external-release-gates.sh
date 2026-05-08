@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-REPO="${GITHUB_REPO:-Rightful-labs/eyther-product}"
-PR_NUMBER="${PR_NUMBER:-2}"
-BRANCH="${BRANCH:-feat/t_855a76d0-gov-01-scaffold}"
+REPO="${GITHUB_REPO:-ak-jarvis/eytherai}"
+PR_NUMBER="${PR_NUMBER:-1}"
+BRANCH="${BRANCH:-feat/t_855a76d0-gov-01-scaffold-railway}"
 RAILWAY_API_URL="${RAILWAY_API_URL:-}"
 VERCEL_PREVIEW_URL="${VERCEL_PREVIEW_URL:-}"
 
