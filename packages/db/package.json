@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json --noEmit",
     "test": "cd ../.. && vitest run packages/db/src/auth-schema.test.ts packages/db/src/phase1-operational-schema.test.ts --passWithNoTests",
     "auth:seed:synthetic": "tsx src/seed-synthetic-auth.ts",
     "auth:assert:synthetic": "tsx src/assert-synthetic-auth.ts",
