@@ -24,7 +24,7 @@ Still intentionally unbuilt or blocked:
 - raw claim-document storage or parser extraction against real documents
 - hosted Railway API/worker/Postgres evidence
 - Vercel preview wired to Railway API
-- non-author reviewer approval and GitHub Actions checks
+- non-author reviewer approval
 
 - Backend/API/workers/Postgres target: Railway.com.
 - Frontend target: Vercel.
@@ -56,7 +56,7 @@ For external release gates:
 pnpm verify:external-gates
 ```
 
-That verifier is expected to fail until GitHub Actions/checks/review, Railway hosted API/worker/Postgres, and Vercel preview evidence are available. It does not read or print Railway variables, credentials, raw email, raw MIME, raw claim documents, or patient data.
+That verifier is expected to fail until non-author review, Railway hosted API/worker/Postgres, and Vercel preview evidence are available. It does not read or print Railway variables, credentials, raw email, raw MIME, raw claim documents, or patient data.
 
 ## Local URLs
 
@@ -75,4 +75,5 @@ Before merge/release:
 - A non-author reviewer must approve or formally block.
 - Railway must host API, worker, and Postgres with `EYTHER_AUTH_STORE=prisma` and `EYTHER_PHASE1_STORE=prisma`.
 - Vercel preview must use `NEXT_PUBLIC_API_BASE_URL=<Railway API URL>/api/v1`.
+- Railway API `CORS_ORIGINS` must include the exact Vercel preview or production origin.
 - Live Send must remain blocked unless the live-send evidence gate is separately satisfied.
