@@ -7,20 +7,595 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserStatus {
+  invited
+  active
+  deactivated
+  revoked
+}
+
+enum AssignmentStatus {
+  active
+  inactive
+  expired
+  revoked
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  expired
+  revoked
+}
+
+enum AuditActorType {
+  hospital_user
+  eyther_support_admin
+  system
+  integration
+}
+
+enum AuditAction {
+  login
+  failed_login
+  logout
+  forbidden_access
+  user_invite_create
+  user_invite_accept
+  user_invite_revoke
+  user_deactivate
+  user_reactivate
+  role_change
+  branch_scope_change
+  onboarding_update
+  hospital_profile_update
+  setup_evidence_upload
+  payer_mix_import
+  counterparty_profile_update
+  rule_set_create
+  test_email_update
+  claim_create
+  claim_update
+  packet_create
+  document_attach
+  document_replace
+  lifecycle_event_create
+  manual_match
+  email_event_ignore
+  email_event_quarantine_release
+  export_create
+  export_download
+  sensitive_reveal_requested
+}
+
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  hospitals Hospital[]
+  tenantId     String   @id @default(uuid()) @db.Uuid
+  tenantSlug   String   @unique
+  displayName  String
+  tenantStatus String   @default("active")
+  dataRegion   String   @default("railway-cloud-pilot")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hospitals                    Hospital[]
+  users                        HospitalUser[]
+  roleAssignments              HospitalUserRoleAssignment[]
+  branchScopes                 HospitalUserBranchScope[]
+  invites                      HospitalUserInvite[]
+  challenges                   AuthLoginChallenge[]
+  sessions                     AuthSession[]
+  auditLogs                    AuditLog[]
+  onboardingStates             OnboardingState[]
+  setupEvidenceArtifacts       SetupEvidenceArtifact[]
+  payerMixRows                 AnonymizedPayerMixRow[]
+  hospitalCounterpartyProfiles HospitalCounterpartyProfile[]
+  ruleSets                     RuleSet[]
+  claims                       Claim[]
+  packets                      ClaimApplicationPacket[]
+  documents                    DocumentAttachment[]
+  emailEvents                  EmailEvent[]
+  lifecycleEvents              LifecycleStatusEvent[]
+  exportJobs                   ExportJob[]
 }
 
 model Hospital {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  branchCode String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  createdAt DateTime @default(now())
+  hospitalId     String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  legalName      String
+  displayName    String
+  branchUnitName String?
+  city           String
+  state          String
+  activeStatus   String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@index([tenantId, branchCode])
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [tenantId])
+  users                        HospitalUser[]
+  roleAssignments              HospitalUserRoleAssignment[]
+  branchScopes                 HospitalUserBranchScope[]
+  invites                      HospitalUserInvite[]
+  challenges                   AuthLoginChallenge[]
+  sessions                     AuthSession[]
+  auditLogs                    AuditLog[]
+  onboardingStates             OnboardingState[]
+  setupEvidenceArtifacts       SetupEvidenceArtifact[]
+  payerMixRows                 AnonymizedPayerMixRow[]
+  hospitalCounterpartyProfiles HospitalCounterpartyProfile[]
+  ruleSets                     RuleSet[]
+  claims                       Claim[]
+  packets                      ClaimApplicationPacket[]
+  documents                    DocumentAttachment[]
+  emailEvents                  EmailEvent[]
+  lifecycleEvents              LifecycleStatusEvent[]
+  exportJobs                   ExportJob[]
+
+  @@index([tenantId])
+}
+
+model HospitalUser {
+  userId               String     @id @default(uuid()) @db.Uuid
+  tenantId             String     @db.Uuid
+  hospitalId           String     @db.Uuid
+  name                 String
+  email                String
+  phoneMasked          String?
+  loginIdentifierEmail String
+  userStatus           UserStatus @default(invited)
+  deactivatedAt        DateTime?
+  deactivatedByUserId  String?    @db.Uuid
+  deactivationReason   String?
+  lastLoginAt          DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  tenant          Tenant                       @relation(fields: [tenantId], references: [tenantId])
+  hospital        Hospital                     @relation(fields: [hospitalId], references: [hospitalId])
+  roleAssignments HospitalUserRoleAssignment[]
+  branchScopes    HospitalUserBranchScope[]
+  challenges      AuthLoginChallenge[]
+  sessions        AuthSession[]
+
+  @@unique([tenantId, loginIdentifierEmail])
+  @@index([tenantId, hospitalId])
+  @@index([email])
+}
+
+model RoleLookup {
+  roleKey      String   @id
+  displayLabel String
+  isInternal   Boolean  @default(false)
+  activeStatus String   @default("active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignments HospitalUserRoleAssignment[]
+}
+
+model HospitalUserRoleAssignment {
+  roleAssignmentId String           @id @default(uuid()) @db.Uuid
+  tenantId         String           @db.Uuid
+  hospitalId       String           @db.Uuid
+  userId           String           @db.Uuid
+  roleKey          String
+  assignmentStatus AssignmentStatus @default(active)
+  effectiveFrom    DateTime         @default(now())
+  effectiveTo      DateTime?
+  assignedByUserId String?          @db.Uuid
+  reasonSanitized  String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+  role     RoleLookup   @relation(fields: [roleKey], references: [roleKey])
+
+  @@index([tenantId, hospitalId, userId])
+  @@index([roleKey])
+}
+
+model HospitalUserBranchScope {
+  branchScopeId    String           @id @default(uuid()) @db.Uuid
+  tenantId         String           @db.Uuid
+  hospitalId       String           @db.Uuid
+  userId           String           @db.Uuid
+  branchId         String?          @db.Uuid
+  allBranches      Boolean          @default(false)
+  scopeStatus      AssignmentStatus @default(active)
+  effectiveFrom    DateTime         @default(now())
+  effectiveTo      DateTime?
+  assignedByUserId String?          @db.Uuid
+  reasonSanitized  String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+
+  @@index([tenantId, hospitalId, userId])
+}
+
+model HospitalUserInvite {
+  inviteId           String       @id @default(uuid()) @db.Uuid
+  tenantId           String       @db.Uuid
+  hospitalId         String       @db.Uuid
+  email              String
+  name               String
+  phoneMasked        String?
+  roleKeysRequested  String[]
+  branchScopePayload Json
+  inviteStatus       InviteStatus @default(pending)
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  invitedByUserId    String?      @db.Uuid
+  revokedByUserId    String?      @db.Uuid
+  revokedAt          DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, email])
+  @@index([inviteStatus])
+}
+
+model AuthLoginChallenge {
+  loginChallengeId String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  hospitalId       String    @db.Uuid
+  userId           String?   @db.Uuid
+  emailNormalized  String
+  otpHash          String
+  delivery         String    @default("synthetic_email")
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  failedAttempts   Int       @default(0)
+  createdAt        DateTime  @default(now())
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital      @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser? @relation(fields: [userId], references: [userId])
+
+  @@index([emailNormalized, expiresAt])
+  @@index([tenantId, hospitalId])
+}
+
+model AuthSession {
+  sessionId         String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @db.Uuid
+  hospitalId        String    @db.Uuid
+  userId            String    @db.Uuid
+  sessionTokenHash  String    @unique
+  ipContextHash     String?
+  deviceContext     String?
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime?
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  sessionFreshUntil DateTime?
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital     @relation(fields: [hospitalId], references: [hospitalId])
+  user     HospitalUser @relation(fields: [userId], references: [userId])
+
+  @@index([tenantId, hospitalId, userId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  auditLogId       String         @id @default(uuid()) @db.Uuid
+  tenantId         String?        @db.Uuid
+  hospitalId       String?        @db.Uuid
+  actorType        AuditActorType @default(hospital_user)
+  actorUserId      String?        @db.Uuid
+  action           AuditAction
+  entityType       String
+  entityId         String?
+  metadataRedacted Json           @default("{}")
+  reasonSanitized  String?
+  correlationId    String?
+  createdAt        DateTime       @default(now())
+
+  tenant   Tenant?   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital? @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, createdAt])
+  @@index([action, createdAt])
+}
+
+model OnboardingState {
+  onboardingStateId      String    @id @default(uuid()) @db.Uuid
+  tenantId               String    @db.Uuid
+  hospitalId             String    @db.Uuid
+  overallStatus          String    @default("not_started")
+  currentStepKey         String?
+  profileCardStatus      String    @default("not_started")
+  mailboxCardStatus      String    @default("not_started")
+  counterpartyCardStatus String    @default("not_started")
+  testEmailCardStatus    String    @default("not_started")
+  readinessCardStatus    String    @default("not_started")
+  skipReasonSanitized    String?
+  blockedReasonCodes     String[]  @default([])
+  readyForClaimDesk      Boolean   @default(false)
+  readyForClaimDeskAt    DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@unique([tenantId, hospitalId])
+  @@index([hospitalId, updatedAt])
+}
+
+model SetupEvidenceArtifact {
+  setupEvidenceArtifactId      String   @id @default(uuid()) @db.Uuid
+  publicArtifactId             String   @unique
+  tenantId                     String   @db.Uuid
+  hospitalId                   String   @db.Uuid
+  hospitalCounterpartyId       String?  @db.Uuid
+  artifactType                 String
+  sourceLabelSanitized         String
+  artifactTextSummarySanitized String?
+  piiScanStatus                String   @default("pending")
+  excelHeaderValidationStatus  String?
+  validationStatus             String   @default("collected")
+  rejectionReasonSanitized     String?
+  rejectedReasonCodes          String[] @default([])
+  createdByUserId              String?  @db.Uuid
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, createdAt])
+  @@index([piiScanStatus])
+}
+
+model AnonymizedPayerMixRow {
+  payerMixRowId           String    @id @default(uuid()) @db.Uuid
+  tenantId                String    @db.Uuid
+  hospitalId              String    @db.Uuid
+  sourceArtifactPublicId  String
+  counterpartyDisplayName String
+  counterpartyType        String
+  monthBucket             DateTime?
+  claimCount              Int
+  claimValueProcessed     Decimal?  @db.Decimal(14, 2)
+  cashlessSharePercent    Decimal?  @db.Decimal(5, 2)
+  rankInHospital          Int?
+  createdAt               DateTime  @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, counterpartyDisplayName])
+}
+
+model CounterpartyMaster {
+  counterpartyId        String   @id @default(uuid()) @db.Uuid
+  publicCounterpartyId  String   @unique
+  counterpartyType      String
+  displayName           String
+  normalizedDisplayName String
+  publicBaselineStatus  String   @default("unverified")
+  activeStatus          String   @default("active")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  hospitalProfiles HospitalCounterpartyProfile[]
+}
+
+model HospitalCounterpartyProfile {
+  hospitalCounterpartyId       String   @id @default(uuid()) @db.Uuid
+  publicHospitalCounterpartyId String   @unique
+  tenantId                     String   @db.Uuid
+  hospitalId                   String   @db.Uuid
+  counterpartyId               String?  @db.Uuid
+  counterpartyDisplayName      String
+  counterpartyType             String
+  submissionMode               String   @default("unknown")
+  acceptedPreauthToEmailMasked String?
+  whitelistedSenderEmailMasked String?
+  readinessStatus              String   @default("draft_configured")
+  hospitalArtifactStatus       String   @default("not_collected")
+  testEmailStatus              String   @default("not_sent")
+  liveValidationStatus         String   @default("not_started")
+  activeForSubmission          Boolean  @default(false)
+  blockedReasonCodes           String[] @default([])
+  supportNoteSanitized         String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [tenantId])
+  hospital     Hospital            @relation(fields: [hospitalId], references: [hospitalId])
+  counterparty CounterpartyMaster? @relation(fields: [counterpartyId], references: [counterpartyId])
+  ruleSets     RuleSet[]
+
+  @@index([tenantId, hospitalId, activeForSubmission])
+  @@index([readinessStatus])
+}
+
+model RuleSet {
+  ruleSetId              String   @id @default(uuid()) @db.Uuid
+  publicRuleSetId        String   @unique
+  tenantId               String?  @db.Uuid
+  hospitalId             String?  @db.Uuid
+  hospitalCounterpartyId String?  @db.Uuid
+  ruleSetType            String
+  version                Int      @default(1)
+  rulesPayload           Json     @default("{}")
+  ruleSource             String   @default("synthetic_draft")
+  fieldSourceConfidence  String   @default("unknown")
+  sourceNoteSanitized    String?
+  createdByUserId        String?  @db.Uuid
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant               Tenant?                      @relation(fields: [tenantId], references: [tenantId])
+  hospital             Hospital?                    @relation(fields: [hospitalId], references: [hospitalId])
+  hospitalCounterparty HospitalCounterpartyProfile? @relation(fields: [hospitalCounterpartyId], references: [hospitalCounterpartyId])
+
+  @@index([tenantId, hospitalId, ruleSetType])
+}
+
+model Claim {
+  claimId                      String    @id @default(uuid()) @db.Uuid
+  eytherClaimNumber            String    @unique
+  tenantId                     String    @db.Uuid
+  hospitalId                   String    @db.Uuid
+  branchId                     String?
+  hospitalCounterpartyPublicId String?
+  patientDisplayName           String
+  patientRefMasked             String
+  policyRefMasked              String
+  counterpartyDisplayName      String
+  owner                        String
+  assignedOfficer              String?
+  currentStage                 String    @default("draft_preauth")
+  currentStatus                String    @default("draft")
+  preauthRequestedAmount       Decimal?  @db.Decimal(14, 2)
+  claimValueInr                Decimal?  @db.Decimal(14, 2)
+  settledAmount                Decimal?  @db.Decimal(14, 2)
+  deductionShortPaymentAmount  Decimal?  @db.Decimal(14, 2)
+  repudiationReasonSanitized   String?
+  nextFollowUpDueAt            DateTime?
+  ageingStartAt                DateTime  @default(now())
+  activeStatus                 String    @default("active")
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  tenant          Tenant                   @relation(fields: [tenantId], references: [tenantId])
+  hospital        Hospital                 @relation(fields: [hospitalId], references: [hospitalId])
+  packets         ClaimApplicationPacket[]
+  documents       DocumentAttachment[]
+  emailEvents     EmailEvent[]
+  lifecycleEvents LifecycleStatusEvent[]
+
+  @@index([tenantId, hospitalId, currentStage])
+  @@index([tenantId, hospitalId, ageingStartAt])
+}
+
+model ClaimApplicationPacket {
+  packetId               String   @id @default(uuid()) @db.Uuid
+  publicPacketId         String   @unique
+  tenantId               String   @db.Uuid
+  hospitalId             String   @db.Uuid
+  claimId                String   @db.Uuid
+  packetType             String
+  packetStatus           String   @default("draft")
+  requestedAmount        Decimal? @db.Decimal(14, 2)
+  triggerReason          String?
+  sendBlockedReasonCodes String[] @default([])
+  createdByUserId        String?  @db.Uuid
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant          Tenant                 @relation(fields: [tenantId], references: [tenantId])
+  hospital        Hospital               @relation(fields: [hospitalId], references: [hospitalId])
+  claim           Claim                  @relation(fields: [claimId], references: [claimId])
+  documents       DocumentAttachment[]
+  lifecycleEvents LifecycleStatusEvent[]
+
+  @@index([tenantId, hospitalId, claimId])
+}
+
+model DocumentAttachment {
+  documentAttachmentId String   @id @default(uuid()) @db.Uuid
+  publicDocumentId     String   @unique
+  tenantId             String   @db.Uuid
+  hospitalId           String   @db.Uuid
+  claimId              String   @db.Uuid
+  packetId             String?  @db.Uuid
+  documentType         String
+  fileNameSanitized    String
+  sourceLabelSanitized String
+  version              Int      @default(1)
+  redactionStatus      String   @default("redacted")
+  reasonNoteSanitized  String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital                @relation(fields: [hospitalId], references: [hospitalId])
+  claim    Claim                   @relation(fields: [claimId], references: [claimId])
+  packet   ClaimApplicationPacket? @relation(fields: [packetId], references: [packetId])
+
+  @@index([tenantId, hospitalId, claimId])
+}
+
+model EmailEvent {
+  emailEventId        String   @id @default(uuid()) @db.Uuid
+  publicEmailEventId  String   @unique
+  tenantId            String   @db.Uuid
+  hospitalId          String   @db.Uuid
+  claimId             String?  @db.Uuid
+  packetIdPublic      String?
+  subjectSanitized    String
+  bodyPreviewRedacted String?
+  matchStatus         String   @default("unmatched")
+  rawAccess           String   @default("restricted")
+  quarantineStatus    String?
+  reasonNoteSanitized String?
+  receivedAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+  claim    Claim?   @relation(fields: [claimId], references: [claimId])
+
+  @@index([tenantId, hospitalId, matchStatus])
+}
+
+model LifecycleStatusEvent {
+  lifecycleStatusEventId String   @id @default(uuid()) @db.Uuid
+  publicLifecycleEventId String   @unique
+  tenantId               String   @db.Uuid
+  hospitalId             String   @db.Uuid
+  claimId                String   @db.Uuid
+  packetId               String?  @db.Uuid
+  fromStage              String?
+  toStage                String
+  fromStatus             String?
+  toStatus               String
+  triggerSource          String   @default("manual")
+  reasonNoteSanitized    String?
+  changedByUserId        String?  @db.Uuid
+  changedAt              DateTime @default(now())
+  createdAt              DateTime @default(now())
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital                @relation(fields: [hospitalId], references: [hospitalId])
+  claim    Claim                   @relation(fields: [claimId], references: [claimId])
+  packet   ClaimApplicationPacket? @relation(fields: [packetId], references: [packetId])
+
+  @@index([tenantId, hospitalId, claimId, changedAt])
+}
+
+model ExportJob {
+  exportJobId           String   @id @default(uuid()) @db.Uuid
+  publicExportId        String   @unique
+  tenantId              String   @db.Uuid
+  hospitalId            String   @db.Uuid
+  branchId              String?
+  exportType            String
+  filterPayloadRedacted Json     @default("{}")
+  includeSensitive      Boolean  @default(false)
+  status                String   @default("queued")
+  filename              String
+  reasonNoteSanitized   String?
+  requestedByUserId     String?  @db.Uuid
+  expiresAt             DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [tenantId])
+  hospital Hospital @relation(fields: [hospitalId], references: [hospitalId])
+
+  @@index([tenantId, hospitalId, createdAt])
 }

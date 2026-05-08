@@ -1,12 +1,10 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { WorkerModule } from './worker.module.js';
-
-async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(WorkerModule, { logger: ['log', 'error', 'warn'] });
-  const logger = app.get('WORKER_LOGGER');
-  logger.log('eyther worker scaffold started with no live mailbox execution');
-  await app.close();
+export function workerHealth() {
+  return { ok: true, service: "worker", phase: "gov-01-scaffold" } as const;
 }
 
-void bootstrap();
+if (process.env.NODE_ENV !== "test") {
+  console.log("Eyther worker scaffold ready for Railway backend jobs");
+  setInterval(() => {
+    // Keep the Railway worker process alive until real scheduled jobs are wired.
+  }, 60_000);
+}

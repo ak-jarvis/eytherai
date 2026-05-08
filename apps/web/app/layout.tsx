@@ -1,12 +1,12 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { ReactNode } from "react";
+import "./globals.css";
 
-export const metadata: Metadata = {
-  title: 'Eyther Cashless Claims Worklist',
-  description: 'Synthetic-only GOV-01 scaffold for hospital cashless claims operations.'
+export const metadata = {
+  title: "Eyther Phase 1",
+  description: "Hospital-side unified cashless claims dashboard",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en-IN">
       <body>{children}</body>

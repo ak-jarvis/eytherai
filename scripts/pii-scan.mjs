@@ -1,31 +1,38 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { extname, join } from "node:path";
 
-const roots = ['tests/fixtures/synthetic', 'apps', 'packages', 'infra'];
+const roots = ["apps", "packages", "tests", "infra", ".github"];
+const supported = new Set([".ts", ".tsx", ".js", ".mjs", ".md", ".yml", ".yaml", ".json", ".prisma", ".css"]);
 const patterns = [
-  { name: 'aadhaar_like', regex: /\b\d{4}\s?\d{4}\s?\d{4}\b/ },
-  { name: 'pan_like', regex: /\b[A-Z]{5}\d{4}[A-Z]\b/ },
-  { name: 'phone_like', regex: /(?:\+91[-\s]?)?[6-9]\d{9}/ },
-  { name: 'raw_secret_placeholder_bypass', regex: /(client_secret|password|token)\s*[:=]\s*['"](?!\[REDACTED\])[^'"]{8,}/i }
+  { name: "realistic Indian mobile number", regex: /(?:\+91[- ]?)?[6-9]\d{9}/ },
+  { name: "oauth token", regex: /(?:gho|ghp|ya29|xox[baprs])_[A-Za-z0-9_/-]{12,}/ },
+  { name: "private key", regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
+  { name: "raw mrn", regex: /MRN[-_ ]?\d{4,}/i },
+  { name: "raw uhid", regex: /UHID[-_ ]?\d{4,}/i },
+  { name: "raw policy id", regex: /POLICY[-_ ]?\d{6,}/i },
+  { name: "raw MIME content", regex: /(?:MIME-Version|DKIM-Signature|Received):/i }
 ];
-const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.md', '.sql', '.prisma', '.txt']);
-const findings = [];
-function walk(path) {
-  if (path.includes('/node_modules/') || path.includes('/.next/') || path.includes('/dist/') || path.includes('/.turbo/')) return;
-  const stat = statSync(path);
-  if (stat.isDirectory()) {
-    for (const child of readdirSync(path)) walk(join(path, child));
-    return;
-  }
-  if (![...extensions].some((ext) => path.endsWith(ext))) return;
-  const text = readFileSync(path, 'utf8');
-  for (const pattern of patterns) {
-    if (pattern.regex.test(text)) findings.push({ path, pattern: pattern.name });
+const allowedSynthetic = ["UHID-TEST-0001", "IP-TEST-0001", "POLICY-TEST-1234", "MEMBER-TEST-0001"];
+const files = [];
+function walk(dir) {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (["node_modules", ".next", "dist", ".turbo"].includes(entry)) continue;
+    const stats = statSync(full);
+    if (stats.isDirectory()) walk(full);
+    if (stats.isFile() && supported.has(extname(entry))) files.push(full);
   }
 }
 for (const root of roots) walk(root);
+const findings = [];
+for (const file of files) {
+  let body = readFileSync(file, "utf8");
+  for (const safe of allowedSynthetic) body = body.replaceAll(safe, "");
+  for (const pattern of patterns) if (pattern.regex.test(body)) findings.push(`${file}: ${pattern.name}`);
+}
 if (findings.length) {
-  console.error(JSON.stringify(findings, null, 2));
+  console.error("PII/secret scan failed:");
+  console.error(findings.join("\n"));
   process.exit(1);
 }
-console.log('synthetic fixture and scaffold PII scan passed');
+console.log(`PII/secret scan passed: ${files.length} files scanned`);

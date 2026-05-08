@@ -1,0 +1,20 @@
+{
+  "synthetic": true,
+  "scenario_id": "gov-01-scaffold-scenario",
+  "hospital": {
+    "display_label": "Synthetic Test Hospital",
+    "region_label": "Tier-3 test city"
+  },
+  "claim": {
+    "claim_id": "CLM-SYN-0001",
+    "owner_role": "insurance_desk",
+    "insurer_or_tpa": "Synthetic TPA",
+    "status": "query_received",
+    "claim_value_inr": 125000,
+    "redaction_status": "synthetic_no_patient_pii"
+  },
+  "active_send": {
+    "enabled": false,
+    "blocked_reason": "GOV-01 scaffold only; hospital x insurer acknowledgement and no-patient-data evidence not implemented"
+  }
+}

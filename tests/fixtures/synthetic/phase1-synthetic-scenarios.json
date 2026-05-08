@@ -1,0 +1,32 @@
+{
+  "synthetic": true,
+  "scenarioId": "phase1-local-cashless-journey",
+  "hospital": {
+    "name": "Lotus Valley Test Hospital",
+    "city": "Test Nagar"
+  },
+  "claim": {
+    "claimId": "CLM-TEST-0001",
+    "patientDisplayName": "Test Patient Alpha",
+    "uhid": "UHID-TEST-0001",
+    "policyId": "POLICY-TEST-1234",
+    "owner": "Insurance Desk Test Owner",
+    "insurerOrTpa": "Example TPA Sandbox",
+    "status": "Awaiting evidence",
+    "claimValueInr": 125000
+  },
+  "email": {
+    "messageId": "MSG-TEST-0001",
+    "from": "tpa.sandbox@example.test",
+    "to": "insurance.desk@example.test",
+    "subject": "Test email acknowledgement for CLM-TEST-0001",
+    "body": "Synthetic acknowledgement only. No patient data, no raw documents, and no real hospital mailbox content."
+  },
+  "activeSend": {
+    "blockedReason": "Missing hospital x insurer evidence and no-patient-data acknowledgement",
+    "allowedEvidence": ["test email acknowledgement", "no patient data confirmation", "synthetic packet checklist"]
+  },
+  "financeExport": {
+    "filenameExpectation": "synthetic-finance-export.csv"
+  }
+}

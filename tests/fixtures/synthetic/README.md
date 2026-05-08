@@ -1,3 +1,3 @@
-# Synthetic Fixtures Only
+# Synthetic Fixtures
 
-This directory may contain synthetic claim-desk examples only. Do not add patient names, MRN/OPD numbers, addresses, phone numbers, prescription photos, policy cards, raw MIME, live mailbox exports, or real hospital documents.
+Only synthetic fixtures may live here. Use `example.test` domains and `*-TEST-*` identifiers. Real patient PII, raw MIME, mailbox screenshots, claim files, prescription photos, and OAuth credentials are forbidden.

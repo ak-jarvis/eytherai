@@ -1,9 +1,33 @@
-# Railway Backend Boundary
+# Railway Infrastructure Notes
 
-GOV-01 records Railway as the future backend/API/worker/Postgres target but does not log in, create projects, mutate environments, deploy services, or create databases.
+Railway is the approved Phase 0.5 / Phase 1 backend target for `apps/api`, `apps/worker`, and Railway Postgres.
 
-Required later before staging or pilot data:
-- AK-provided Railway auth and project access.
-- Railway project, environment, service, Postgres plugin, region/data-residency, backup/restore, log access, and secret access review.
-- Environment variables stored only in Railway/provider secret store. Use `[REDACTED]` placeholders in docs.
-- No real patient data, raw email/MIME, hospital documents, or mailbox credentials until reviewer gate passes.
+GOV-01 does not deploy. Before any Railway action, verify project ownership, environment names, service names, PostgreSQL version/region, backup posture, logging/redaction, and secret access policy.
+
+Required later environment variables must be stored in Railway environment/secret tooling, never committed here. Use `[REDACTED]` placeholders in docs.
+
+## Service config paths
+
+Configure each Railway service with an explicit config file path:
+
+- API service: `/infra/railway/api.railway.json`
+- Worker service: `/infra/railway/worker.railway.json`
+- Database: Railway Postgres, PostgreSQL 16 if available
+
+The API service must expose `PORT` and pass `GET /api/v1/health` before routing traffic.
+
+## Required environment names
+
+Values must be configured in Railway, not committed:
+
+- `NODE_ENV=production`
+- `PORT` supplied by Railway
+- `DATABASE_URL=[REDACTED]`
+- `EYTHER_AUTH_STORE=prisma`
+- `EYTHER_PHASE1_STORE=prisma`
+- `CORS_ORIGINS=[VERCEL_PREVIEW_OR_PRODUCTION_ORIGIN]`
+- Future mailbox/OAuth/secret references only after reviewer approval
+
+Do not add real patient data, raw email, raw MIME, raw claim documents, mailbox screenshots, OAuth tokens, app passwords, or credentials to Railway variables, logs, fixtures, PRs, or vault evidence.
+
+Before enabling `EYTHER_AUTH_STORE=prisma` and `EYTHER_PHASE1_STORE=prisma`, apply the checked-in Prisma migrations to Railway Postgres and seed only synthetic/no-patient-data hospital users, roles, branch scope, invites, and Phase 1 operational rows.

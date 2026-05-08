@@ -1,23 +1,38 @@
-import { z } from 'zod';
-
-export const deploymentBoundary = {
-  backend: 'railway',
-  frontend: 'vercel',
-  objectStorage: 'deferred_synthetic_only',
-  awsScaffoldAllowed: false
+export const eytherScaffold = {
+  product: "unified-cashless-claims-dashboard",
+  apiBasePath: "/api/v1",
+  deployment: {
+    backend: "railway",
+    frontend: "vercel",
+  },
 } as const;
 
-export const RedactedEnvSchema = z.object({
-  DATABASE_URL: z.string().min(1).optional(),
-  API_BASE_URL: z.string().url().optional(),
-  NEXT_PUBLIC_API_BASE_URL: z.string().url().optional(),
-  DOCUMENT_STORAGE_MODE: z.literal('deferred_synthetic_only').default('deferred_synthetic_only')
-});
-
-export const redactionTerms = [
-  'raw_mime',
-  'oauth_token',
-  'policy_member_id',
-  'phone_address',
-  'hospital_document_text'
+export const redactionBoundaries = [
+  "patient identifiers",
+  "raw email/MIME bodies",
+  "prescription photos",
+  "claim documents",
+  "OAuth secrets",
+  "app passwords",
+  "tokens",
 ] as const;
+
+export function nowIso() {
+  return new Date().toISOString();
+}
+
+export function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "***";
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+export function maskPolicy(policyNumber: string) {
+  return `***${policyNumber.slice(-4)}`;
+}
+
+export function redact(value: string) {
+  return value
+    .replace(/Test Patient [A-Za-z]+/g, "[redacted patient]")
+    .replace(/POLICY-TEST-[A-Z0-9-]+/g, "[redacted policy]");
+}

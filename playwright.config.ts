@@ -1,17 +1,15 @@
-import { defineConfig } from '@playwright/test';
-
-const e2ePort = 3107;
-const e2eBaseUrl = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${e2ePort}`;
+import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: "tests/e2e",
+  timeout: 30_000,
+  fullyParallel: true,
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: e2eBaseUrl
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
-  webServer: process.env.E2E_SKIP_WEBSERVER === '1' ? undefined : {
-    command: `pnpm --filter @eyther/web dev --hostname 127.0.0.1 --port ${e2ePort}`,
-    url: e2eBaseUrl,
-    reuseExistingServer: false,
-    timeout: 120_000
-  }
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
